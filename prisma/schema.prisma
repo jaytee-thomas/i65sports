@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  COLUMNIST
+  EDITOR
+  ADMIN
+}
+
+enum TakeKind {
+  VIDEO
+  AUDIO
+  TEXT
+}
+
+enum TakeStatus {
+  PUBLISHED
+  FLAGGED
+  REMOVED
+}
+
+enum ReplyKind {
+  TEXT
+  VIDEO
+  AUDIO
+}
+
+enum ReelStatus {
+  PUBLISHED
+  FLAGGED
+  REMOVED
+  PENDING
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  username  String     @unique
+  role      Role       @default(USER)
+  createdAt DateTime   @default(now())
+  takes     HotTake[]
+  replies   Reply[]
+  reactions Reaction[]
+  articles  Article[]
+  comments  Comment[]
+  fanReels  FanReel[]
+  following Follow[]   @relation("Following")
+  followers Follow[]   @relation("Followers")
+}
+
+model HotTake {
+  id        String     @id @default(cuid())
+  authorId  String
+  author    User       @relation(fields: [authorId], references: [id])
+  kind      TakeKind   @default(VIDEO)
+  title     String?
+  videoUrl  String?
+  audioUrl  String?
+  textBody  String?
+  duration  Int?
+  sport     String?
+  league    String?
+  tags      String[]
+  createdAt DateTime   @default(now())
+  replies   Reply[]
+  reactions Reaction[]
+  comments  Comment[]
+  status    TakeStatus @default(PUBLISHED)
+}
+
+model Reply {
+  id        String    @id @default(cuid())
+  takeId    String
+  take      HotTake   @relation(fields: [takeId], references: [id])
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id])
+  kind      ReplyKind @default(TEXT)
+  textBody  String?
+  videoUrl  String?
+  audioUrl  String?
+  createdAt DateTime  @default(now())
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  takeId    String?
+  take      HotTake? @relation(fields: [takeId], references: [id])
+  fanReelId String?
+  fanReel   FanReel? @relation("FanReelReactions", fields: [fanReelId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  emoji     String
+  createdAt DateTime @default(now())
+
+  @@unique([takeId, userId, emoji])
+  @@unique([fanReelId, userId, emoji])
+}
+
+model Article {
+  id          String    @id @default(cuid())
+  columnistId String
+  columnist   User      @relation(fields: [columnistId], references: [id])
+  title       String
+  slug        String    @unique
+  coverImage  String?
+  body        Json
+  tags        String[]
+  publishedAt DateTime  @default(now())
+  comments    Comment[]
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  articleId String?
+  article   Article? @relation(fields: [articleId], references: [id])
+  takeId    String?
+  take      HotTake? @relation(fields: [takeId], references: [id])
+  fanReelId String?
+  fanReel   FanReel? @relation("FanReelComments", fields: [fanReelId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model Follow {
+  id         String   @id @default(cuid())
+  followerId String
+  follower   User     @relation("Following", fields: [followerId], references: [id])
+  followeeId String
+  followee   User     @relation("Followers", fields: [followeeId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@unique([followerId, followeeId])
+}
+
+model Game {
+  id        String    @id @default(cuid())
+  league    String
+  homeTeam  String
+  awayTeam  String
+  venue     String?
+  startTime DateTime
+  seasonKey String?
+  reels     FanReel[]
+  createdAt DateTime  @default(now())
+
+  @@index([league, startTime])
+  @@index([homeTeam, awayTeam, startTime])
+}
+
+model FanReel {
+  id        String     @id @default(cuid())
+  authorId  String
+  author    User       @relation(fields: [authorId], references: [id])
+  gameId    String
+  game      Game       @relation(fields: [gameId], references: [id])
+  title     String?
+  videoUrl  String
+  thumbUrl  String?
+  duration  Int
+  width     Int?
+  height    Int?
+  gpsLat    Float?
+  gpsLng    Float?
+  shotAt    DateTime?
+  tags      String[]
+  status    ReelStatus @default(PUBLISHED)
+  createdAt DateTime   @default(now())
+  reactions Reaction[] @relation("FanReelReactions")
+  comments  Comment[]  @relation("FanReelComments")
+}
