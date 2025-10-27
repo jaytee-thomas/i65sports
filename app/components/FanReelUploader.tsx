@@ -33,15 +33,78 @@ export default function FanReelUploader({ gameId }: { gameId: string }) {
   };
 
   return (
-    <div className="space-y-3">
-      <input ref={inputRef} type="file" accept="video/*" onChange={onPick} />
-      {preview && <video src={preview} controls className="w-full rounded" />}
-      {err && <p className="text-red-600">{err}</p>}
+    <div className="space-y-5">
+      <div className="rounded-3xl border border-dashed border-ash/60 bg-iron/60 p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.32em] text-neutral-500">Game ID</p>
+            <p className="mt-1 font-numeric text-sm text-neutral-300">{gameId}</p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-neutral-500">
+            <span className="rounded-full bg-graphite/70 px-3 py-1 uppercase tracking-[0.32em]">
+              mp4 · mov · webm
+            </span>
+            <span className="rounded-full bg-graphite/70 px-3 py-1 uppercase tracking-[0.32em]">
+              ≤ 250MB
+            </span>
+          </div>
+        </div>
+
+        <label
+          htmlFor="fan-reel-upload"
+          className="mt-6 flex cursor-pointer flex-col items-center gap-4 rounded-2xl border border-ash/60 bg-gradient-to-br from-graphite via-iron to-midnight px-6 py-10 text-center transition hover:border-neon-emerald/60 hover:shadow-glow-blue"
+        >
+          <span className="flex h-16 w-16 items-center justify-center rounded-full border border-ash/60 bg-graphite text-lg text-neon-emerald">
+            ⬆
+          </span>
+          <div className="space-y-1">
+            <p className="font-display text-xl text-white">Drop your reel</p>
+            <p className="text-sm text-neutral-400">Click to upload or drag a vertical clip onto this surface.</p>
+          </div>
+          <input
+            id="fan-reel-upload"
+            ref={inputRef}
+            type="file"
+            accept="video/*"
+            onChange={onPick}
+            className="hidden"
+          />
+        </label>
+      </div>
+
+      {preview && (
+        <div className="rounded-3xl border border-ash/60 bg-graphite/70 p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs uppercase tracking-[0.32em] text-neutral-500">Preview</span>
+            <button
+              className="text-xs uppercase tracking-[0.32em] text-neutral-500 hover:text-neon-emerald"
+              onClick={() => {
+                setFile(null);
+                setPreview(null);
+                inputRef.current && (inputRef.current.value = "");
+              }}
+            >
+              Clear
+            </button>
+          </div>
+          <video src={preview} controls className="mt-3 w-full rounded-2xl border border-ash/60" />
+        </div>
+      )}
+
+      {err && (
+        <div className="rounded-2xl border border-red-700/60 bg-red-900/20 px-4 py-3 text-sm text-red-300">
+          {err}
+        </div>
+      )}
+
       <button
         onClick={onSubmit}
         disabled={!file || submitting}
-        className="px-4 py-2 rounded bg-emerald-600 text-white disabled:opacity-50">
-        {submitting ? "Uploading..." : "Upload Fan Reel"}
+        type="button"
+        className="inline-flex items-center gap-2 rounded-full border border-neon-emerald/60 bg-graphite/80 px-6 py-3 text-xs uppercase tracking-[0.32em] text-neon-emerald transition hover:-translate-y-0.5 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {submitting ? "Uploading…" : "Upload Fan Reel"}
+        <span className="text-base leading-none">↗</span>
       </button>
     </div>
   );

@@ -62,23 +62,60 @@ export default function HotTakeRecorder() {
   };
 
   return (
-    <div className="space-y-3">
-      <div className="rounded border border-neutral-800 p-3">
-        <video ref={videoRef} autoPlay muted playsInline className="w-full rounded bg-black" />
+    <div className="space-y-4">
+      <div className="overflow-hidden rounded-3xl border border-ash/60 bg-gradient-to-br from-graphite via-iron to-midnight">
+        <div className="relative aspect-[3/4] w-full">
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="h-full w-full rounded-3xl object-cover"
+          />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent" />
+          <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-ash/60 bg-black/40 px-3 py-1 text-xs uppercase tracking-[0.32em] text-neutral-200">
+            Live Mic
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-neon-emerald/70" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-neon-emerald" />
+            </span>
+          </div>
+        </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-ash/60 bg-graphite/70 px-4 py-3">
         {!recording ? (
-          <button onClick={startRecording} className="px-4 py-2 rounded bg-black text-white">Record 60s</button>
+          <button
+            onClick={startRecording}
+            className="inline-flex items-center gap-2 rounded-full border border-neon-emerald/60 bg-graphite/80 px-5 py-2 text-xs uppercase tracking-[0.32em] text-neon-emerald transition hover:-translate-y-0.5 hover:text-white"
+          >
+            Record 60s
+            <span className="text-base leading-none">●</span>
+          </button>
         ) : (
-          <button onClick={stopRecording} className="px-4 py-2 rounded bg-red-600 text-white">Stop</button>
+          <button
+            onClick={stopRecording}
+            className="inline-flex items-center gap-2 rounded-full border border-red-600/60 bg-red-900/30 px-5 py-2 text-xs uppercase tracking-[0.32em] text-red-300 transition hover:-translate-y-0.5 hover:text-white"
+          >
+            Stop
+            <span className="text-base leading-none">■</span>
+          </button>
         )}
-        <span className="tabular-nums">{recording ? `⏱️ ${countdown}s` : "Ready"}</span>
+        <span className="font-numeric text-sm text-neutral-400">
+          {recording ? `⏱ ${countdown}s` : "Ready"}
+        </span>
       </div>
-      {error && <p className="text-red-600">{error}</p>}
+      {error && <p className="rounded-2xl border border-red-700/60 bg-red-900/20 px-4 py-2 text-sm text-red-300">{error}</p>}
       {blobUrl && (
-        <div className="space-y-2">
-          <video src={blobUrl} controls className="w-full rounded" />
-          <button onClick={upload} className="px-4 py-2 rounded bg-emerald-600 text-white">Publish</button>
+        <div className="space-y-3 rounded-3xl border border-ash/60 bg-graphite/70 p-4">
+          <video src={blobUrl} controls className="w-full rounded-2xl border border-ash/60" />
+          <button
+            onClick={upload}
+            type="button"
+            className="inline-flex items-center gap-2 rounded-full border border-neon-emerald/60 bg-graphite/80 px-5 py-2 text-xs uppercase tracking-[0.32em] text-neon-emerald transition hover:-translate-y-0.5 hover:text-white"
+          >
+            Publish
+            <span className="text-base leading-none">↗</span>
+          </button>
         </div>
       )}
     </div>

@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import ReplyForm from "./ReplyForm";
-import type { AuthorOption } from "./types";
 
 function formatRelative(date: Date) {
   const now = new Date();
@@ -19,11 +18,7 @@ function formatRelative(date: Date) {
   });
 }
 
-export default async function HotTakeFeed({
-  replyAuthors,
-}: {
-  replyAuthors: AuthorOption[];
-}) {
+export default async function HotTakeFeed() {
   type HotTakeWithRelations = Prisma.HotTakeGetPayload<{
     include: {
       author: { select: { username: true; role: true } };
@@ -59,7 +54,7 @@ export default async function HotTakeFeed({
   } catch (error) {
     console.error("[hot-take-feed] Failed to load hot takes", error);
     return (
-      <div className="rounded-xl border border-yellow-900/60 bg-yellow-950/30 p-6 text-sm text-yellow-200">
+      <div className="rounded-3xl border border-yellow-900/60 bg-yellow-950/20 p-6 text-sm text-yellow-200">
         Hot take feed is temporarily unavailable. Check your database connection and try again.
       </div>
     );
@@ -69,42 +64,43 @@ export default async function HotTakeFeed({
 
   if (list.length === 0) {
     return (
-      <div className="rounded-xl border border-neutral-800 p-6 text-sm text-neutral-400">
-        No hot takes yet — be the first to record one.
+      <div className="rounded-3xl border border-ash/60 bg-graphite/60 p-8 text-center text-sm text-neutral-400">
+        No hot takes yet — be the first voice on the board tonight.
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {list.map((take) => (
         <article
           key={take.id}
-          className="rounded-xl border border-neutral-800 bg-neutral-950/60"
+          className="group overflow-hidden rounded-3xl border border-ash/60 bg-gradient-to-br from-graphite via-iron to-midnight transition hover:border-neon-emerald/60 hover:shadow-glow-blue"
         >
-          <div className="border-b border-neutral-800 px-4 py-3 text-xs text-neutral-400">
-            <span className="font-medium text-neutral-200">
-              {take.author.username}
-            </span>{" "}
-            · {take.author.role.toLowerCase()} · {formatRelative(take.createdAt)}
+          <div className="flex items-center justify-between border-b border-ash/60 px-6 py-4 text-xs uppercase tracking-[0.24em] text-neutral-500">
+            <span className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-neon-emerald/60" />
+              @{take.author.username}
+            </span>
+            <span>{take.author.role.toLowerCase()} · {formatRelative(take.createdAt)}</span>
           </div>
-          <div className="space-y-3 px-4 py-4">
+          <div className="space-y-4 px-6 py-6">
             {take.title && (
-              <h3 className="text-lg font-semibold text-neutral-50">
+              <h3 className="font-display text-2xl font-semibold text-white">
                 {take.title}
               </h3>
             )}
             {take.textBody && (
-              <p className="text-sm leading-6 text-neutral-200">
+              <p className="text-sm leading-7 text-neutral-200">
                 {take.textBody}
               </p>
             )}
             {take.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 text-xs text-neutral-400">
+              <div className="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.28em] text-neutral-500">
                 {take.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="rounded-full border border-neutral-800 px-2 py-0.5"
+                    className="rounded-full border border-ash/60 bg-graphite/70 px-3 py-1 text-neutral-300"
                   >
                     #{tag}
                   </span>
@@ -112,40 +108,47 @@ export default async function HotTakeFeed({
               </div>
             )}
             <footer className="flex flex-wrap items-center gap-4 text-xs text-neutral-400">
-              <span>Replies · {take.replies.length}</span>
-              <span>Reactions · {take.reactions.length}</span>
-              <span>Comments · {take.comments.length}</span>
+              <span className="font-medium text-neutral-200">
+                Replies · <span className="font-numeric text-sm text-neon-emerald">{take.replies.length}</span>
+              </span>
+              <span className="font-medium text-neutral-200">
+                Reactions · <span className="font-numeric text-sm text-neutral-100">{take.reactions.length}</span>
+              </span>
+              <span className="font-medium text-neutral-200">
+                Comments · <span className="font-numeric text-sm text-neutral-100">{take.comments.length}</span>
+              </span>
             </footer>
-            <div className="rounded-lg border border-neutral-800 bg-neutral-900/50">
-              <div className="border-b border-neutral-800 px-3 py-2 text-xs font-semibold text-neutral-400">
-                Replies
+            <div className="overflow-hidden rounded-2xl border border-ash/60 bg-graphite/70">
+              <div className="flex items-center justify-between border-b border-ash/60 px-4 py-2 text-xs uppercase tracking-[0.24em] text-neutral-500">
+                <span>Replies</span>
+                <span className="hidden md:inline-block text-neutral-400">Drop a respectful counterpoint</span>
               </div>
-              <ul className="divide-y divide-neutral-800">
+              <ul className="divide-y divide-ash/50">
                 {take.replies.length === 0 ? (
-                  <li className="px-3 py-3 text-sm text-neutral-500">
-                    No replies yet. Be the first.
+                  <li className="px-4 py-4 text-sm text-neutral-500">
+                    No replies yet. Spark the conversation.
                   </li>
                 ) : (
                   take.replies.map((reply) => (
-                    <li key={reply.id} className="px-3 py-3">
-                      <div className="text-xs text-neutral-400">
-                        {reply.author.username} ·{" "}
-                        {formatRelative(reply.createdAt)}
+                    <li key={reply.id} className="px-4 py-4 transition hover:bg-iron/60">
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-neutral-500">
+                        <span className="h-1.5 w-1.5 rounded-full bg-neon-blue/60" />
+                        @{reply.author.username} · {formatRelative(reply.createdAt)}
                       </div>
                       {reply.textBody ? (
-                        <p className="mt-1 text-sm leading-6 text-neutral-200">
+                        <p className="mt-2 text-sm text-neutral-200">
                           {reply.textBody}
                         </p>
                       ) : (
-                        <p className="mt-1 text-sm italic text-neutral-500">
-                          {reply.kind.toLowerCase()} reply — tap to play
+                        <p className="mt-2 text-sm italic text-neutral-500">
+                          {reply.kind.toLowerCase()} reply — press play
                         </p>
                       )}
                     </li>
                   ))
                 )}
               </ul>
-              <ReplyForm takeId={take.id} authors={replyAuthors} />
+              <ReplyForm takeId={take.id} />
             </div>
           </div>
         </article>

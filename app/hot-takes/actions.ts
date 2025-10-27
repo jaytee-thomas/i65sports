@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { ReplyKind, TakeKind } from "@prisma/client";
+import { getOrCreateUserForClerkId } from "@/lib/user-from-clerk";
 
 type ActionResult =
   | { success: true }
@@ -16,34 +18,27 @@ function normalizeTags(tags: string[] | undefined) {
     .map((tag) => tag.replace(/^#/, "").toLowerCase());
 }
 
-async function ensureAuthor(authorId: string) {
-  if (!authorId) return null;
-  return prisma.user.findUnique({ where: { id: authorId } });
-}
-
 export async function createHotTake({
-  authorId,
   title,
   textBody,
   tags,
 }: {
-  authorId: string;
   title?: string;
   textBody: string;
   tags?: string[];
 }): Promise<ActionResult> {
   const trimmedBody = textBody?.trim();
-  if (!authorId) {
-    return { success: false, error: "Choose an author for this take." };
+
+  const { userId } = auth();
+  if (!userId) {
+    return { success: false, error: "Sign in to publish your take." };
   }
+
   if (!trimmedBody) {
     return { success: false, error: "Add a few words — your take is empty." };
   }
 
-  const author = await ensureAuthor(authorId);
-  if (!author) {
-    return { success: false, error: "Selected author no longer exists." };
-  }
+  const author = await getOrCreateUserForClerkId(userId);
 
   const sanitizedTitle = title?.trim() || null;
   const tagList = normalizeTags(tags);
@@ -63,18 +58,19 @@ export async function createHotTake({
 }
 
 export async function createReply({
-  authorId,
   takeId,
   textBody,
 }: {
-  authorId: string;
   takeId: string;
   textBody: string;
 }): Promise<ActionResult> {
   const trimmedBody = textBody?.trim();
-  if (!authorId) {
-    return { success: false, error: "Select who is replying." };
+
+  const { userId } = auth();
+  if (!userId) {
+    return { success: false, error: "Sign in to join the conversation." };
   }
+
   if (!takeId) {
     return { success: false, error: "Missing hot take reference." };
   }
@@ -83,13 +79,10 @@ export async function createReply({
   }
 
   const [author, take] = await Promise.all([
-    ensureAuthor(authorId),
+    getOrCreateUserForClerkId(userId),
     prisma.hotTake.findUnique({ where: { id: takeId }, select: { id: true } }),
   ]);
 
-  if (!author) {
-    return { success: false, error: "Selected author no longer exists." };
-  }
   if (!take) {
     return { success: false, error: "Hot take was removed. Refresh and try again." };
   }

@@ -20,6 +20,7 @@ async function main() {
     data: {
       email: 'columnist@example.com',
       username: 'sideline_scribe',
+      clerkId: 'clerk_columnist',
       role: Role.COLUMNIST,
     },
   });
@@ -28,6 +29,7 @@ async function main() {
     data: {
       email: 'fan@example.com',
       username: 'reel_deal',
+      clerkId: 'clerk_fan',
       role: Role.USER,
     },
   });
