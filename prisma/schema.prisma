@@ -7,6 +7,160 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  username        String           @unique
+  role            Role             @default(USER)
+  createdAt       DateTime         @default(now())
+  clerkId         String?          @unique
+  articles        Article[]
+  comments        Comment[]
+  fanReels        FanReel[]
+  followers       Follow[]         @relation("Followers")
+  following       Follow[]         @relation("Following")
+  takes           HotTake[]
+  reactions       Reaction[]
+  recordingDrafts RecordingDraft[]
+  replies         Reply[]
+}
+
+model HotTake {
+  id        String     @id @default(cuid())
+  authorId  String
+  kind      TakeKind   @default(VIDEO)
+  title     String?
+  videoUrl  String?
+  audioUrl  String?
+  textBody  String?
+  duration  Int?
+  sport     String?
+  league    String?
+  tags      String[]
+  createdAt DateTime   @default(now())
+  status    TakeStatus @default(PUBLISHED)
+  comments  Comment[]
+  author    User       @relation(fields: [authorId], references: [id])
+  reactions Reaction[]
+  replies   Reply[]
+}
+
+model Reply {
+  id        String    @id @default(cuid())
+  takeId    String
+  authorId  String
+  kind      ReplyKind @default(TEXT)
+  textBody  String?
+  videoUrl  String?
+  audioUrl  String?
+  createdAt DateTime  @default(now())
+  author    User      @relation(fields: [authorId], references: [id])
+  take      HotTake   @relation(fields: [takeId], references: [id])
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  takeId    String?
+  fanReelId String?
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+  fanReel   FanReel? @relation("FanReelReactions", fields: [fanReelId], references: [id])
+  take      HotTake? @relation(fields: [takeId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([takeId, userId, emoji])
+  @@unique([fanReelId, userId, emoji])
+}
+
+model Article {
+  id          String    @id @default(cuid())
+  columnistId String
+  title       String
+  slug        String    @unique
+  coverImage  String?
+  body        Json
+  tags        String[]
+  publishedAt DateTime  @default(now())
+  columnist   User      @relation(fields: [columnistId], references: [id])
+  comments    Comment[]
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  authorId  String
+  articleId String?
+  takeId    String?
+  fanReelId String?
+  body      String
+  createdAt DateTime @default(now())
+  article   Article? @relation(fields: [articleId], references: [id])
+  author    User     @relation(fields: [authorId], references: [id])
+  fanReel   FanReel? @relation("FanReelComments", fields: [fanReelId], references: [id])
+  take      HotTake? @relation(fields: [takeId], references: [id])
+}
+
+model Follow {
+  id         String   @id @default(cuid())
+  followerId String
+  followeeId String
+  createdAt  DateTime @default(now())
+  followee   User     @relation("Followers", fields: [followeeId], references: [id])
+  follower   User     @relation("Following", fields: [followerId], references: [id])
+
+  @@unique([followerId, followeeId])
+}
+
+model Game {
+  id        String    @id @default(cuid())
+  league    String
+  homeTeam  String
+  awayTeam  String
+  venue     String?
+  startTime DateTime
+  seasonKey String?
+  createdAt DateTime  @default(now())
+  reels     FanReel[]
+
+  @@index([league, startTime])
+  @@index([homeTeam, awayTeam, startTime])
+}
+
+model FanReel {
+  id        String     @id @default(cuid())
+  authorId  String
+  gameId    String
+  title     String?
+  videoUrl  String
+  thumbUrl  String?
+  duration  Int
+  width     Int?
+  height    Int?
+  gpsLat    Float?
+  gpsLng    Float?
+  shotAt    DateTime?
+  tags      String[]
+  status    ReelStatus @default(PUBLISHED)
+  createdAt DateTime   @default(now())
+  comments  Comment[]  @relation("FanReelComments")
+  author    User       @relation(fields: [authorId], references: [id])
+  game      Game       @relation(fields: [gameId], references: [id])
+  reactions Reaction[] @relation("FanReelReactions")
+}
+
+model RecordingDraft {
+  id        String          @id @default(cuid())
+  userId    String
+  duration  Int
+  sizeBytes Int
+  mimeType  String?
+  status    RecordingStatus @default(DRAFT)
+  notes     String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  user      User            @relation(fields: [userId], references: [id])
+}
+
 enum Role {
   USER
   COLUMNIST
@@ -39,142 +193,9 @@ enum ReelStatus {
   PENDING
 }
 
-model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  username  String     @unique
-  clerkId   String?    @unique
-  role      Role       @default(USER)
-  createdAt DateTime   @default(now())
-  takes     HotTake[]
-  replies   Reply[]
-  reactions Reaction[]
-  articles  Article[]
-  comments  Comment[]
-  fanReels  FanReel[]
-  following Follow[]   @relation("Following")
-  followers Follow[]   @relation("Followers")
-}
-
-model HotTake {
-  id        String     @id @default(cuid())
-  authorId  String
-  author    User       @relation(fields: [authorId], references: [id])
-  kind      TakeKind   @default(VIDEO)
-  title     String?
-  videoUrl  String?
-  audioUrl  String?
-  textBody  String?
-  duration  Int?
-  sport     String?
-  league    String?
-  tags      String[]
-  createdAt DateTime   @default(now())
-  replies   Reply[]
-  reactions Reaction[]
-  comments  Comment[]
-  status    TakeStatus @default(PUBLISHED)
-}
-
-model Reply {
-  id        String    @id @default(cuid())
-  takeId    String
-  take      HotTake   @relation(fields: [takeId], references: [id])
-  authorId  String
-  author    User      @relation(fields: [authorId], references: [id])
-  kind      ReplyKind @default(TEXT)
-  textBody  String?
-  videoUrl  String?
-  audioUrl  String?
-  createdAt DateTime  @default(now())
-}
-
-model Reaction {
-  id        String   @id @default(cuid())
-  takeId    String?
-  take      HotTake? @relation(fields: [takeId], references: [id])
-  fanReelId String?
-  fanReel   FanReel? @relation("FanReelReactions", fields: [fanReelId], references: [id])
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  emoji     String
-  createdAt DateTime @default(now())
-
-  @@unique([takeId, userId, emoji])
-  @@unique([fanReelId, userId, emoji])
-}
-
-model Article {
-  id          String    @id @default(cuid())
-  columnistId String
-  columnist   User      @relation(fields: [columnistId], references: [id])
-  title       String
-  slug        String    @unique
-  coverImage  String?
-  body        Json
-  tags        String[]
-  publishedAt DateTime  @default(now())
-  comments    Comment[]
-}
-
-model Comment {
-  id        String   @id @default(cuid())
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id])
-  articleId String?
-  article   Article? @relation(fields: [articleId], references: [id])
-  takeId    String?
-  take      HotTake? @relation(fields: [takeId], references: [id])
-  fanReelId String?
-  fanReel   FanReel? @relation("FanReelComments", fields: [fanReelId], references: [id])
-  body      String
-  createdAt DateTime @default(now())
-}
-
-model Follow {
-  id         String   @id @default(cuid())
-  followerId String
-  follower   User     @relation("Following", fields: [followerId], references: [id])
-  followeeId String
-  followee   User     @relation("Followers", fields: [followeeId], references: [id])
-  createdAt  DateTime @default(now())
-
-  @@unique([followerId, followeeId])
-}
-
-model Game {
-  id        String    @id @default(cuid())
-  league    String
-  homeTeam  String
-  awayTeam  String
-  venue     String?
-  startTime DateTime
-  seasonKey String?
-  reels     FanReel[]
-  createdAt DateTime  @default(now())
-
-  @@index([league, startTime])
-  @@index([homeTeam, awayTeam, startTime])
-}
-
-model FanReel {
-  id        String     @id @default(cuid())
-  authorId  String
-  author    User       @relation(fields: [authorId], references: [id])
-  gameId    String
-  game      Game       @relation(fields: [gameId], references: [id])
-  title     String?
-  videoUrl  String
-  thumbUrl  String?
-  duration  Int
-  width     Int?
-  height    Int?
-  gpsLat    Float?
-  gpsLng    Float?
-  shotAt    DateTime?
-  tags      String[]
-  status    ReelStatus @default(PUBLISHED)
-  createdAt DateTime   @default(now())
-  reactions Reaction[] @relation("FanReelReactions")
-  comments  Comment[]  @relation("FanReelComments")
+enum RecordingStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
 }

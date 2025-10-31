@@ -2,33 +2,68 @@
 
 import { SignedIn, SignedOut, SignInButton, useUser } from "@clerk/nextjs";
 import { useState, useTransition } from "react";
+import { useToast } from "../components/ToastProvider";
 import { createReply } from "./actions";
 
-type Notice =
-  | { type: "success"; message: string }
-  | { type: "error"; message: string };
+type OptimisticReply = {
+  id: string;
+  textBody: string;
+  author: string;
+  status: "pending" | "error";
+};
+
+const createId = () => (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+  ? crypto.randomUUID()
+  : Math.random().toString(36).slice(2));
 
 export default function ReplyForm({ takeId }: { takeId: string }) {
   const { user } = useUser();
+  const { pushToast } = useToast();
   const [textBody, setTextBody] = useState("");
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const [optimisticReplies, setOptimisticReplies] = useState<OptimisticReply[]>([]);
   const [isPending, startTransition] = useTransition();
+
+  const displayName =
+    user?.username ||
+    user?.firstName?.concat(user.lastName ? ` ${user.lastName}` : "") ||
+    user?.primaryEmailAddress?.emailAddress ||
+    "you";
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setNotice(null);
+
+    const optimisticId = createId();
+    const trimmedBody = textBody.trim();
+    if (!trimmedBody) return;
+
+    setOptimisticReplies((prev) => [
+      ...prev,
+      { id: optimisticId, textBody: trimmedBody, author: displayName, status: "pending" },
+    ]);
 
     startTransition(async () => {
       const result = await createReply({
         takeId,
-        textBody,
+        textBody: trimmedBody,
       });
 
       if (result.success) {
+        pushToast({
+          title: "Reply posted",
+          description: "Your reply just hit the thread.",
+          variant: "success",
+        });
         setTextBody("");
-        setNotice({ type: "success", message: "Reply posted." });
+        setOptimisticReplies((prev) => prev.filter((reply) => reply.id !== optimisticId));
       } else {
-        setNotice({ type: "error", message: result.error });
+        setOptimisticReplies((prev) =>
+          prev.map((reply) => (reply.id === optimisticId ? { ...reply, status: "error" } : reply)),
+        );
+        pushToast({
+          title: "Reply failed",
+          description: result.error,
+          variant: "error",
+        });
       }
     });
   };
@@ -48,6 +83,41 @@ export default function ReplyForm({ takeId }: { takeId: string }) {
 
       <SignedIn>
         <form onSubmit={handleSubmit} className="space-y-3">
+          {optimisticReplies.length > 0 && (
+            <div className="space-y-2 rounded-2xl border border-ash/60 bg-graphite/70 p-3">
+              <div className="text-[11px] uppercase tracking-[0.32em] text-neutral-500">Pending replies</div>
+              <ul className="space-y-2 text-sm text-neutral-200">
+                {optimisticReplies.map((reply) => (
+                  <li
+                    key={reply.id}
+                    className={`rounded-xl border px-3 py-2 ${
+                      reply.status === "error"
+                        ? "border-red-700/60 bg-red-900/30 text-red-200"
+                        : "border-neon-emerald/40 bg-neon-emerald/5"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.28em] text-neutral-500">
+                      <span>@{reply.author}</span>
+                      <span>{reply.status === "error" ? "Failed" : "Posting…"}</span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6">{reply.textBody}</p>
+                    {reply.status === "error" ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOptimisticReplies((prev) => prev.filter((candidate) => candidate.id !== reply.id))
+                        }
+                        className="mt-2 text-xs uppercase tracking-[0.3em] text-red-200 underline-offset-4 hover:underline"
+                      >
+                        Dismiss
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <textarea
             className="h-24 w-full resize-none rounded-2xl border border-ash/60 bg-iron/80 px-4 py-3 text-sm leading-6 text-neutral-100 transition focus:border-neon-emerald focus:outline-none"
             placeholder="Keep it respectful. Fire back with your POV."
@@ -56,27 +126,9 @@ export default function ReplyForm({ takeId }: { takeId: string }) {
             maxLength={360}
           />
 
-          {notice && (
-            <div
-              className={`rounded-2xl border px-4 py-2 text-xs ${
-                notice.type === "success"
-                  ? "border-neon-emerald/60 bg-neon-emerald/10 text-neon-emerald"
-                  : "border-red-700/60 bg-red-900/20 text-red-300"
-              }`}
-            >
-              {notice.message}
-            </div>
-          )}
-
           <div className="flex items-center justify-between text-xs text-neutral-500">
             <span>
-              Replying as{" "}
-              <span className="text-neutral-200">
-                {user?.username ||
-                  user?.firstName?.concat(user.lastName ? ` ${user.lastName}` : "") ||
-                  user?.primaryEmailAddress?.emailAddress ||
-                  "you"}
-              </span>
+              Replying as <span className="text-neutral-200">{displayName}</span>
             </span>
             <button
               type="submit"

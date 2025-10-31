@@ -1,7 +1,9 @@
 "use client";
+
+import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import { useRef, useState } from "react";
 
-export default function FanReelUploader({ gameId }: { gameId: string }) {
+function FanReelUploaderInner({ gameId }: { gameId: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -23,9 +25,10 @@ export default function FanReelUploader({ gameId }: { gameId: string }) {
     setErr(null);
     try {
       alert("Upload placeholder — wire this to /api/reels/upload-url and your video provider.");
-      setFile(null); setPreview(null);
+      setFile(null);
+      setPreview(null);
       inputRef.current && (inputRef.current.value = "");
-    } catch (e:any) {
+    } catch (e: any) {
       setErr("Upload failed. Please try again.");
     } finally {
       setSubmitting(false);
@@ -106,6 +109,26 @@ export default function FanReelUploader({ gameId }: { gameId: string }) {
         {submitting ? "Uploading…" : "Upload Fan Reel"}
         <span className="text-base leading-none">↗</span>
       </button>
+    </div>
+  );
+}
+
+export default function FanReelUploader({ gameId }: { gameId: string }) {
+  return (
+    <div className="space-y-5">
+      <SignedOut>
+        <div className="space-y-3 rounded-3xl border border-ash/60 bg-graphite/70 p-6 text-center text-sm text-neutral-400">
+          <p>Sign in to upload your fan reel.</p>
+          <SignInButton mode="modal">
+            <button className="w-full rounded-full border border-neon-emerald/60 bg-graphite/80 px-5 py-3 text-xs font-semibold uppercase tracking-[0.32em] text-neon-emerald transition hover:-translate-y-0.5 hover:text-white">
+              Sign in to upload
+            </button>
+          </SignInButton>
+        </div>
+      </SignedOut>
+      <SignedIn>
+        <FanReelUploaderInner gameId={gameId} />
+      </SignedIn>
     </div>
   );
 }

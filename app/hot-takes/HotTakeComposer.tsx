@@ -2,18 +2,28 @@
 
 import { SignedIn, SignedOut, SignInButton, useUser } from "@clerk/nextjs";
 import { useState, useTransition } from "react";
+import { useToast } from "../components/ToastProvider";
 import { createHotTake } from "./actions";
 
-type Notice =
-  | { type: "success"; message: string }
-  | { type: "error"; message: string };
+type OptimisticTake = {
+  id: string;
+  title?: string;
+  textBody: string;
+  tags: string[];
+  status: "pending" | "error";
+};
+
+const createId = () => (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+  ? crypto.randomUUID()
+  : Math.random().toString(36).slice(2));
 
 export default function HotTakeComposer() {
   const { user } = useUser();
+  const { pushToast } = useToast();
   const [title, setTitle] = useState("");
   const [textBody, setTextBody] = useState("");
   const [tags, setTags] = useState("");
-  const [notice, setNotice] = useState<Notice | null>(null);
+  const [optimisticTakes, setOptimisticTakes] = useState<OptimisticTake[]>([]);
   const [isPending, startTransition] = useTransition();
 
   const displayName =
@@ -24,12 +34,23 @@ export default function HotTakeComposer() {
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setNotice(null);
 
     const tagList = tags
       .split(",")
       .map((tag) => tag.trim())
       .filter(Boolean);
+
+    const optimisticId = createId();
+    setOptimisticTakes((prev) => [
+      ...prev,
+      {
+        id: optimisticId,
+        title: title.trim() ? title : undefined,
+        textBody,
+        tags: tagList,
+        status: "pending",
+      },
+    ]);
 
     startTransition(async () => {
       const result = await createHotTake({
@@ -39,12 +60,24 @@ export default function HotTakeComposer() {
       });
 
       if (result.success) {
-        setNotice({ type: "success", message: "Hot take published." });
+        pushToast({
+          title: "Hot take published",
+          description: "Your take is live. The feed will refresh shortly.",
+          variant: "success",
+        });
         setTitle("");
         setTextBody("");
         setTags("");
+        setOptimisticTakes((prev) => prev.filter((take) => take.id !== optimisticId));
       } else {
-        setNotice({ type: "error", message: result.error });
+        setOptimisticTakes((prev) =>
+          prev.map((take) => (take.id === optimisticId ? { ...take, status: "error" } : take)),
+        );
+        pushToast({
+          title: "Could not publish take",
+          description: result.error,
+          variant: "error",
+        });
       }
     });
   };
@@ -111,18 +144,6 @@ export default function HotTakeComposer() {
             />
           </div>
 
-          {notice && (
-            <div
-              className={`rounded-2xl border px-4 py-3 text-xs ${
-                notice.type === "success"
-                  ? "border-neon-emerald/60 bg-neon-emerald/10 text-neon-emerald"
-                  : "border-red-700/60 bg-red-900/20 text-red-300"
-              }`}
-            >
-              {notice.message}
-            </div>
-          )}
-
           <button
             type="submit"
             className="w-full rounded-full border border-neon-emerald/60 bg-gradient-to-r from-graphite via-iron to-graphite px-5 py-3 text-xs font-semibold uppercase tracking-[0.32em] text-neon-emerald transition hover:-translate-y-0.5 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -130,6 +151,44 @@ export default function HotTakeComposer() {
           >
             {isPending ? "Publishing…" : "Publish Hot Take"}
           </button>
+
+          {optimisticTakes.length > 0 && (
+            <div className="space-y-3 rounded-2xl border border-ash/60 bg-graphite/70 p-4">
+              <div className="text-[11px] uppercase tracking-[0.32em] text-neutral-500">Pending posts</div>
+              <ul className="space-y-3 text-sm text-neutral-200">
+                {optimisticTakes.map((take) => (
+                  <li
+                    key={take.id}
+                    className={`rounded-xl border px-3 py-3 ${
+                      take.status === "error"
+                        ? "border-red-700/60 bg-red-900/30 text-red-200"
+                        : "border-neon-emerald/40 bg-neon-emerald/5"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.28em] text-neutral-500">
+                      <span>{take.status === "error" ? "Failed to publish" : "Publishing…"}</span>
+                      {take.tags.length ? <span>#{take.tags.join(" · #")}</span> : null}
+                    </div>
+                    {take.title ? <p className="mt-2 font-display text-lg text-white">{take.title}</p> : null}
+                    <p className="mt-2 text-sm leading-6">
+                      {take.textBody}
+                    </p>
+                    {take.status === "error" ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOptimisticTakes((prev) => prev.filter((candidate) => candidate.id !== take.id))
+                        }
+                        className="mt-3 text-xs uppercase tracking-[0.3em] text-red-200 underline-offset-4 hover:underline"
+                      >
+                        Dismiss
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </form>
       </SignedIn>
     </div>

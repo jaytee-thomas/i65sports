@@ -20,19 +20,20 @@ cp .env.example .env
 # Example Docker:
 # docker run --name i65-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
 
-# 4) Prisma generate & migrate
-npx prisma generate
-npx prisma migrate dev --name init
+# 4) Apply prisma migrations & seed demo content
+npm run db:migrate
+npm run db:seed
 
 # 5) Run dev
 npm run dev
 ```
 
 ## Next steps
-- Wire Clerk auth: wrap layout with `<ClerkProvider>` and add sign-in/out.
+- Swap demo auth keys with live ones in production environments.
 - Implement real video upload using Cloudflare Stream or Mux.
 - Build `/api/takes`, `/api/replies`, `/api/reels/upload-url` endpoints to handle uploads + DB writes.
 - Replace the demo `gameId` in Reels with a real `Game` row (seed script).
 - Replace odds demo with a real provider (cache results 30–60s).
+- Move background feed refresh into a scheduled worker (see `docs/data-jobs.md`).
 
 Happy building! 🚀
