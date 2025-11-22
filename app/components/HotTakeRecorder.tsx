@@ -64,6 +64,7 @@ function RecorderInner() {
     setRecording(false);
     mediaRecorderRef.current?.stop();
   }, []);
+  
   useEffect(() => {
     let timer: number | undefined;
     if (recording && countdown > 0) {
@@ -88,40 +89,85 @@ function RecorderInner() {
       setSavingDraft(true);
       const durationSeconds =
         startedAtRef.current === null ? Math.round(blob.size / (1024 * 512)) : Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
+      
       try {
-        const result = await saveRecordingDraft({
+        // First check quota by saving draft metadata
+        const quotaResult = await saveRecordingDraft({
           duration: durationSeconds,
           sizeBytes: blob.size,
           mimeType: blob.type,
         });
 
-        if (result.success) {
+        if (!quotaResult.success) {
           pushToast({
-            title: "Recording saved",
-            description: "We saved a draft for moderation. Upload the file when ready.",
+            title: "Upload failed",
+            description: quotaResult.error ?? "Daily recording limit reached.",
+            variant: "error",
+          });
+          setSavingDraft(false);
+          return;
+        }
+
+        // Upload to R2
+        const formData = new FormData();
+        formData.append("video", blob, `hottake-${Date.now()}.webm`);
+        formData.append("duration", durationSeconds.toString());
+        formData.append("recordedAtVenue", "false"); // Will add venue detection later
+        
+        // Get user's location if available
+        if (navigator.geolocation) {
+          try {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+            });
+            formData.append("venueLat", position.coords.latitude.toString());
+            formData.append("venueLng", position.coords.longitude.toString());
+          } catch (geoErr) {
+            console.log("[recorder] geolocation unavailable", geoErr);
+          }
+        }
+
+        const uploadResponse = await fetch("/api/hot-takes/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed: ${uploadResponse.status}`);
+        }
+
+        const uploadResult = await uploadResponse.json();
+
+        if (uploadResult.success) {
+          pushToast({
+            title: "Hot Take uploaded! 🔥",
+            description: "Your take is live and ready for the world to see.",
             variant: "success",
           });
-          setQuota((prev) =>
-            prev
-              ? {
-                  allowed: result.remaining > 0,
-                  remaining: Math.max(result.remaining, 0),
-                  limit: prev.limit,
-                }
-              : prev,
-          );
+          
+          // Clear preview after successful upload
+          if (url) {
+            URL.revokeObjectURL(url);
+          }
+          setPreviewUrl(null);
+          
+          setQuota((prev) => ({
+            allowed: (quotaResult.remaining ?? 0) > 0,
+            remaining: Math.max(quotaResult.remaining ?? 0, 0),
+            limit: prev?.limit ?? 5,
+          }));
         } else {
           pushToast({
-            title: "Draft not saved",
-            description: result.error ?? "Something went wrong saving your recording.",
+            title: "Upload failed",
+            description: uploadResult.error ?? "Something went wrong uploading your take.",
             variant: "error",
           });
         }
       } catch (err) {
-        console.error("[recorder] save draft failed", err);
+        console.error("[recorder] upload failed", err);
         pushToast({
-          title: "Draft not saved",
-          description: "Something went wrong saving your recording.",
+          title: "Upload failed",
+          description: "Something went wrong uploading your take. Please try again.",
           variant: "error",
         });
       } finally {
@@ -138,7 +184,7 @@ function RecorderInner() {
     if (!currentQuota.allowed) {
       pushToast({
         title: "Daily limit reached",
-        description: "You’ve hit the recording limit for today. Come back tomorrow with more takes.",
+        description: "You've hit the recording limit for today. Come back tomorrow with more takes.",
         variant: "error",
       });
       return;
@@ -232,6 +278,11 @@ function RecorderInner() {
             {quota.remaining}/{quota.limit} recordings left today
           </span>
         )}
+        {savingDraft && (
+          <span className="text-xs uppercase tracking-[0.28em] text-neon-emerald animate-pulse">
+            Uploading...
+          </span>
+        )}
       </div>
       {quotaError && (
         <p className="rounded-2xl border border-yellow-700/60 bg-yellow-900/30 px-4 py-2 text-sm text-yellow-100">
@@ -245,24 +296,14 @@ function RecorderInner() {
       )}
       {previewUrl && (
         <div className="space-y-3 rounded-3xl border border-ash/60 bg-graphite/70 p-4">
-          <video src={previewUrl} controls className="w-full rounded-2xl border border-ash/60" />
+          <video 
+            src={previewUrl} 
+            controls 
+            className="w-full max-h-96 rounded-2xl border border-ash/60 object-cover"
+          />
           <p className="text-xs uppercase tracking-[0.28em] text-neutral-500">
-            Draft saved for moderation. Upload flow coming soon.
+            Preview - uploading to R2...
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              if (previewUrl) {
-                URL.revokeObjectURL(previewUrl);
-                setPreviewUrl(null);
-              }
-            }}
-            className="inline-flex items-center gap-2 rounded-full border border-ash/60 bg-graphite/80 px-5 py-2 text-xs uppercase tracking-[0.32em] text-neutral-300 transition hover:-translate-y-0.5 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={savingDraft}
-          >
-            Delete draft
-            <span className="text-base leading-none">✕</span>
-          </button>
         </div>
       )}
     </>

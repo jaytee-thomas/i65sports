@@ -16,6 +16,14 @@ export async function uploadToR2(
 ): Promise<string> {
   const key = `videos/${Date.now()}-${fileName}`;
 
+  console.log("[R2] Uploading:", {
+    bucket: process.env.R2_BUCKET_NAME,
+    key,
+    size: file.length,
+    contentType,
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  });
+
   await r2Client.send(
     new PutObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME!,

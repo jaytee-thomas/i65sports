@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
-import { ReplyKind, TakeKind } from "@prisma/client";
+import { TakeKind } from "@prisma/client";
 import { getOrCreateUserForClerkId } from "@/lib/user-from-clerk";
 
 type ActionResult =
@@ -87,12 +87,11 @@ export async function createReply({
     return { success: false, error: "Hot take was removed. Refresh and try again." };
   }
 
-  await prisma.reply.create({
+  await prisma.comment.create({
     data: {
       takeId: take.id,
       authorId: author.id,
-      kind: ReplyKind.TEXT,
-      textBody: trimmedBody,
+      body: trimmedBody,
     },
   });
 

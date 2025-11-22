@@ -22,13 +22,12 @@ export default async function HotTakeFeed() {
   type HotTakeWithRelations = Prisma.HotTakeGetPayload<{
     include: {
       author: { select: { username: true; role: true } };
-      replies: {
+      reactions: true;
+      comments: {
         include: {
           author: { select: { username: true } };
         };
       };
-      reactions: true;
-      comments: true;
     };
   }>;
 
@@ -39,15 +38,14 @@ export default async function HotTakeFeed() {
       orderBy: { createdAt: "desc" },
       include: {
         author: { select: { username: true, role: true } },
-        replies: {
+        reactions: true,
+        comments: {
           orderBy: { createdAt: "desc" },
           take: 5,
           include: {
             author: { select: { username: true } },
           },
         },
-        reactions: true,
-        comments: true,
       },
       take: 10,
     });
@@ -109,41 +107,32 @@ export default async function HotTakeFeed() {
             )}
             <footer className="flex flex-wrap items-center gap-4 text-xs text-neutral-400">
               <span className="font-medium text-neutral-200">
-                Replies · <span className="font-numeric text-sm text-neon-emerald">{take.replies.length}</span>
+                Comments · <span className="font-numeric text-sm text-neon-emerald">{take.comments.length}</span>
               </span>
               <span className="font-medium text-neutral-200">
                 Reactions · <span className="font-numeric text-sm text-neutral-100">{take.reactions.length}</span>
               </span>
-              <span className="font-medium text-neutral-200">
-                Comments · <span className="font-numeric text-sm text-neutral-100">{take.comments.length}</span>
-              </span>
             </footer>
             <div className="overflow-hidden rounded-2xl border border-ash/60 bg-graphite/70">
               <div className="flex items-center justify-between border-b border-ash/60 px-4 py-2 text-xs uppercase tracking-[0.24em] text-neutral-500">
-                <span>Replies</span>
+                <span>Comments</span>
                 <span className="hidden md:inline-block text-neutral-400">Drop a respectful counterpoint</span>
               </div>
               <ul className="divide-y divide-ash/50">
-                {take.replies.length === 0 ? (
+                {take.comments.length === 0 ? (
                   <li className="px-4 py-4 text-sm text-neutral-500">
-                    No replies yet. Spark the conversation.
+                    No comments yet. Spark the conversation.
                   </li>
                 ) : (
-                  take.replies.map((reply) => (
-                    <li key={reply.id} className="px-4 py-4 transition hover:bg-iron/60">
+                  take.comments.map((comment) => (
+                    <li key={comment.id} className="px-4 py-4 transition hover:bg-iron/60">
                       <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-neutral-500">
                         <span className="h-1.5 w-1.5 rounded-full bg-neon-blue/60" />
-                        @{reply.author.username} · {formatRelative(reply.createdAt)}
+                        @{comment.author.username} · {formatRelative(comment.createdAt)}
                       </div>
-                      {reply.textBody ? (
-                        <p className="mt-2 text-sm text-neutral-200">
-                          {reply.textBody}
-                        </p>
-                      ) : (
-                        <p className="mt-2 text-sm italic text-neutral-500">
-                          {reply.kind.toLowerCase()} reply — press play
-                        </p>
-                      )}
+                      <p className="mt-2 text-sm text-neutral-200">
+                        {comment.body}
+                      </p>
                     </li>
                   ))
                 )}
