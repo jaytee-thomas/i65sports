@@ -1,29 +1,49 @@
-// @ts-check
-import type { Config } from 'tailwindcss'
+import type { Config } from "tailwindcss";
 
-export default {
+const config: Config = {
   content: [
-    "./app/**/*.{ts,tsx}",
-    "./components/**/*.{ts,tsx}",
+    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
       colors: {
-        midnight: "#0b0b10",
-        graphite: "#14141a",
-        slate: "#1c1c22",
-        iron: "#22222a",
-        ash: "#2a2a33",
-        neon: {
-          emerald: "#2de5b9",
-          blue: "#3b82f6",
-          orange: "#f97316",
-        },
+        // NEW: Deeper, higher contrast backgrounds
+        midnight: "#0A0E14",
+        graphite: "#1A1F2E", 
+        iron: "#242B3D",
+        ash: "#2D3748",
+        
+        // NEW: Additional accent colors
+        "neon-emerald": "#00FF88",
+        "hot-pink": "#FF3366",
+        "electric-blue": "#00D9FF",
+        "gold": "#FFB800",
+        "live-green": "#00FF88",
+        "danger-red": "#FF4757",
+        
+        // NEW: Better text colors
+        "text-primary": "#FFFFFF",
+        "text-secondary": "#8B95A8",
+        "text-muted": "#4A5568",
       },
       fontFamily: {
-        display: ["var(--font-display)", "sans-serif"],
-        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
-        numeric: ["var(--font-numeric)", "monospace"],
+        sans: [
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          '"Segoe UI"',
+          'Roboto',
+          'sans-serif'
+        ],
+      },
+      fontSize: {
+        "hero": ["3.5rem", { lineHeight: "1.1", letterSpacing: "-0.02em", fontWeight: "900" }],
+        "title": ["2.5rem", { lineHeight: "1.2", letterSpacing: "-0.01em", fontWeight: "800" }],
+      },
+      maxWidth: {
+        "container": "1400px",
       },
       boxShadow: {
         "surface": "0 18px 45px -30px rgba(45,229,185,0.4)",
@@ -54,4 +74,6 @@ export default {
     },
   },
   plugins: [],
-} satisfies Config
+};
+
+export default config;

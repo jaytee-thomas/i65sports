@@ -77,7 +77,7 @@ export default function HotTakeCard({ hotTake }: HotTakeCardProps) {
   };
 
   return (
-    <div className="group overflow-hidden rounded-2xl border border-ash/40 bg-gradient-to-br from-graphite via-iron to-midnight transition hover:border-neon-emerald/40">
+    <div className="group overflow-hidden rounded-2xl border border-ash bg-gradient-to-br from-graphite via-iron to-midnight transition hover:border-hot-pink/40">
       {/* Video */}
       <div
         className="relative aspect-[9/16] w-full cursor-pointer"
@@ -97,7 +97,7 @@ export default function HotTakeCard({ hotTake }: HotTakeCardProps) {
         {/* Play/Pause Overlay */}
         {(!isPlaying || showControls) && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-[2px] transition">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neon-emerald/90 transition group-hover:scale-110">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-hot-pink/90 transition group-hover:scale-110">
               {isPlaying ? (
                 // Pause icon
                 <svg
@@ -123,7 +123,7 @@ export default function HotTakeCard({ hotTake }: HotTakeCardProps) {
 
         {/* Venue Badge */}
         {hotTake.recordedAtVenue && hotTake.venueName && (
-          <div className="absolute left-3 top-3 rounded-full border border-neon-emerald/60 bg-black/60 px-3 py-1 backdrop-blur-sm">
+          <div className="absolute left-3 top-3 rounded-full border border-neon-emerald/60 bg-midnight/80 px-3 py-1 backdrop-blur-sm">
             <div className="flex items-center gap-1.5 text-xs">
               <span>📍</span>
               <span className="font-semibold text-neon-emerald">

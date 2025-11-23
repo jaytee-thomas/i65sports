@@ -125,13 +125,13 @@ export default function EnhancedOddsTicker() {
 
   return (
     <>
-      <div className="relative w-full overflow-hidden bg-gradient-to-r from-graphite via-iron to-graphite border-y border-ash/40">
-        <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-graphite to-transparent z-10 pointer-events-none" />
-        <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-graphite to-transparent z-10 pointer-events-none" />
+      <div className="relative w-full overflow-hidden bg-gradient-to-r from-midnight via-graphite to-midnight border-y border-ash">
+        <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-midnight to-transparent z-10 pointer-events-none" />
+        <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-midnight to-transparent z-10 pointer-events-none" />
         
         <button
           onClick={() => setIsModalOpen(true)}
-          className="absolute right-8 top-1/2 -translate-y-1/2 z-20 flex items-center gap-2 rounded-full border border-ash/60 bg-midnight/90 px-4 py-2 backdrop-blur-sm transition hover:border-neon-emerald hover:scale-105"
+          className="absolute right-8 top-1/2 -translate-y-1/2 z-20 flex items-center gap-2 rounded-full border border-ash bg-midnight/90 px-4 py-2 backdrop-blur-sm transition hover:border-hot-pink hover:scale-105"
         >
           <span className="text-xs uppercase tracking-wider text-neutral-400">
             Books:
@@ -157,7 +157,7 @@ export default function EnhancedOddsTicker() {
           {duplicatedGames.map((game, index) => (
             <div
               key={`${game.id}-${index}`}
-              className="flex-shrink-0 flex items-center gap-6 px-6 py-2 rounded-lg bg-midnight/30 border border-ash/30 backdrop-blur-sm"
+              className="flex-shrink-0 flex items-center gap-6 px-6 py-2 rounded-lg bg-iron/30 border border-ash backdrop-blur-sm"
             >
               <div className="flex items-center gap-2">
                 <span className="px-2 py-1 text-xs font-bold uppercase tracking-wider bg-neon-emerald/20 text-neon-emerald rounded">
