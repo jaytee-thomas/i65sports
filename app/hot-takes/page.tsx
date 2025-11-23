@@ -1,62 +1,61 @@
-import { Suspense } from "react";
+import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs";
 import HotTakeRecorder from "../components/HotTakeRecorder";
 import HotTakeComposer from "./HotTakeComposer";
 import HotTakeFeed from "./HotTakeFeed";
+import MyHotTakes from "../components/MyHotTakes";
+import Link from "next/link";
 
 export default function HotTakesPage() {
   return (
-    <div className="space-y-10">
-      <header className="rounded-3xl border border-ash/60 bg-gradient-to-br from-graphite via-iron to-midnight p-8 shadow-surface">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.32em] text-neutral-500">Community Board</p>
-            <h1 className="mt-3 font-display text-4xl text-white">Daily Hot Takes</h1>
-            <p className="mt-4 max-w-2xl text-sm text-neutral-400">
-              60 seconds to make your case. Columnists drop first, fans follow, and the best replies rise to the top.
-            </p>
-          </div>
-          <div className="rounded-full border border-neon-emerald/50 bg-graphite/60 px-4 py-2 text-xs uppercase tracking-[0.32em] text-neon-emerald">
-            Tonight’s slate · Colts vs Bears · Pacers vs Celtics
-          </div>
-        </div>
-      </header>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="space-y-5">
-          <Suspense
-            fallback={
-              <div className="rounded-3xl border border-ash/60 bg-graphite/60 p-6 text-sm text-neutral-400">
-                Loading the latest takes…
-              </div>
-            }
+    <div className="min-h-screen bg-gradient-to-b from-midnight via-graphite to-midnight">
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8 flex items-center justify-between">
+          <h1 className="text-3xl font-black uppercase tracking-tight text-white">
+            Hot Takes
+          </h1>
+          <Link
+            href="/hot-takes/feed"
+            className="rounded-full border border-neon-emerald/60 bg-graphite/80 px-4 py-2 text-sm uppercase tracking-wider text-neon-emerald transition hover:bg-neon-emerald hover:text-midnight"
           >
-            <HotTakeFeed />
-          </Suspense>
+            View Community Feed
+          </Link>
         </div>
 
-        <aside className="space-y-5">
-          <div className="rounded-3xl border border-ash/60 bg-graphite/60 p-6">
-            <h2 className="font-display text-xl text-white">Publish a Text Take</h2>
-            <p className="mt-2 text-sm text-neutral-400">
-              Share a quick opinion while we wire up video uploads. Picks, predictions, instant reactions — all welcome.
-            </p>
-            <div className="mt-5">
+        <div className="grid gap-8 lg:grid-cols-[2fr_1fr]">
+          {/* Main Content */}
+          <div className="space-y-8">
+            {/* Feed */}
+            <section>
+              <HotTakeFeed />
+            </section>
+
+            {/* My Hot Takes */}
+            <SignedIn>
+              <section>
+                <MyHotTakes />
+              </section>
+            </SignedIn>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Text Composer */}
+            <section>
+              <h2 className="mb-4 text-lg font-bold uppercase tracking-tight text-white">
+                Publish a Text Take
+              </h2>
               <HotTakeComposer />
-            </div>
-          </div>
-          <div className="rounded-3xl border border-ash/60 bg-graphite/60 p-6">
-            <h2 className="font-display text-xl text-white">Record a Hot Take</h2>
-            <p className="mt-2 text-sm text-neutral-400">
-              60 seconds max. Hype your team, call an upset, or react to another take. Replies can drop in video soon.
-            </p>
-            <div className="mt-5 rounded-2xl border border-dashed border-ash/60 bg-iron/60 p-4">
+            </section>
+
+            {/* Video Recorder */}
+            <section>
+              <h2 className="mb-4 text-lg font-bold uppercase tracking-tight text-white">
+                Record a Hot Take
+              </h2>
               <HotTakeRecorder />
-            </div>
+            </section>
           </div>
-          <div className="rounded-3xl border border-ash/40 bg-graphite/40 p-5 text-xs uppercase tracking-[0.32em] text-neutral-500">
-            Publishing flow coming soon — recordings stay local for now.
-          </div>
-        </aside>
+        </div>
       </div>
     </div>
   );
