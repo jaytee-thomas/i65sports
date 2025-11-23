@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { uploadToR2 } from "@/lib/r2";
+import { getOrCreateUserForClerkId } from "@/lib/user-from-clerk";
 
 export async function POST(request: Request) {
   const { userId } = auth();
@@ -31,14 +32,8 @@ export async function POST(request: Request) {
       video.type || "video/webm"
     );
 
-    // Get user from database
-    const user = await prisma.user.findUnique({
-      where: { clerkId: userId },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
+    // Get or create user from database
+    const user = await getOrCreateUserForClerkId(userId);
 
     // Create HotTake in database
     const hotTake = await prisma.hotTake.create({
