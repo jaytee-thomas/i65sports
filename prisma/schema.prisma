@@ -112,6 +112,24 @@ model Game {
   @@index([homeTeam, awayTeam, startTime])
 }
 
+model Venue {
+  id        String   @id @default(cuid())
+  name      String
+  city      String
+  state     String
+  latitude  Float
+  longitude Float
+  capacity  Int?
+  sport     String?
+  team      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, city])
+  @@index([latitude, longitude])
+  @@map("venues")
+}
+
 enum Role {
   USER
   COLUMNIST

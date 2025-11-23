@@ -11,6 +11,22 @@ type Quota = {
   limit: number;
 };
 
+type DetectedVenue = {
+  id: string;
+  name: string;
+  city: string;
+  state: string;
+  team?: string;
+  sport?: string;
+};
+
+type VenueDetection = {
+  atVenue: boolean;
+  venue: DetectedVenue | null;
+  distance: number | null;
+  activeGame: any;
+};
+
 function RecorderInner() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -27,6 +43,9 @@ function RecorderInner() {
   const [isCheckingQuota, setIsCheckingQuota] = useState(true);
   const [savingDraft, setSavingDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [venueDetection, setVenueDetection] = useState<VenueDetection | null>(null);
+  const [detectingVenue, setDetectingVenue] = useState(false);
+  const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
 
   const { pushToast } = useToast();
 
@@ -45,6 +64,47 @@ function RecorderInner() {
       setIsCheckingQuota(false);
     }
   }, []);
+
+  // Detect venue from user's location
+  const detectVenue = useCallback(async () => {
+    setDetectingVenue(true);
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+        });
+      });
+
+      const response = await fetch("/api/venues/detect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }),
+      });
+
+      const data = await response.json();
+      setVenueDetection(data);
+      setUserCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+
+      if (data.atVenue) {
+        pushToast({
+          title: `📍 At ${data.venue.name}!`,
+          description: data.activeGame
+            ? `${data.activeGame.away} @ ${data.activeGame.home} - Your take will be tagged!`
+            : "Your take will be tagged with venue info",
+          variant: "success",
+        });
+      }
+    } catch (error) {
+      console.log("[recorder] venue detection failed:", error);
+      // Don't show error toast - venue detection is optional
+    } finally {
+      setDetectingVenue(false);
+    }
+  }, [pushToast]);
 
   useEffect(() => {
     refreshQuota();
@@ -112,19 +172,19 @@ function RecorderInner() {
         const formData = new FormData();
         formData.append("video", blob, `hottake-${Date.now()}.webm`);
         formData.append("duration", durationSeconds.toString());
-        formData.append("recordedAtVenue", "false"); // Will add venue detection later
-        
-        // Get user's location if available
-        if (navigator.geolocation) {
-          try {
-            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-              navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-            });
-            formData.append("venueLat", position.coords.latitude.toString());
-            formData.append("venueLng", position.coords.longitude.toString());
-          } catch (geoErr) {
-            console.log("[recorder] geolocation unavailable", geoErr);
+
+        // Add venue detection data if available
+        if (venueDetection?.atVenue && venueDetection.venue && userCoords) {
+          formData.append("recordedAtVenue", "true");
+          formData.append("venueName", venueDetection.venue.name);
+          formData.append("venueLat", userCoords.latitude.toString());
+          formData.append("venueLng", userCoords.longitude.toString());
+          
+          if (venueDetection.activeGame) {
+            formData.append("gameInfo", JSON.stringify(venueDetection.activeGame));
           }
+        } else {
+          formData.append("recordedAtVenue", "false");
         }
 
         const uploadResponse = await fetch("/api/hot-takes/upload", {
@@ -141,15 +201,19 @@ function RecorderInner() {
         if (uploadResult.success) {
           pushToast({
             title: "Hot Take uploaded! 🔥",
-            description: "Your take is live and ready for the world to see.",
+            description: venueDetection?.atVenue
+              ? `Tagged at ${venueDetection.venue?.name}`
+              : "Your take is live!",
             variant: "success",
           });
-          
+
           // Clear preview after successful upload
           if (url) {
             URL.revokeObjectURL(url);
           }
           setPreviewUrl(null);
+          setVenueDetection(null); // Reset for next recording
+          setUserCoords(null); // Reset coordinates
           
           setQuota((prev) => ({
             allowed: (quotaResult.remaining ?? 0) > 0,
@@ -174,7 +238,7 @@ function RecorderInner() {
         setSavingDraft(false);
       }
     },
-    [previewUrl, pushToast],
+    [previewUrl, pushToast, venueDetection, userCoords],
   );
 
   const startRecording = useCallback(async () => {
@@ -189,6 +253,9 @@ function RecorderInner() {
       });
       return;
     }
+
+    // Detect venue before starting camera
+    await detectVenue();
 
     try {
       if (!streamRef.current) {
@@ -228,7 +295,7 @@ function RecorderInner() {
     setCountdown(60);
     setRecording(true);
     recorder.start(1000);
-  }, [recording, savingDraft, quota, refreshQuota, pushToast, handleRecordingComplete]);
+  }, [recording, savingDraft, quota, refreshQuota, pushToast, handleRecordingComplete, detectVenue]);
 
   return (
     <>
@@ -242,7 +309,27 @@ function RecorderInner() {
             className="h-full w-full rounded-3xl object-cover"
           />
           <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/70 to-transparent" />
-          <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-ash/60 bg-black/40 px-3 py-1 text-xs uppercase tracking-[0.32em] text-neutral-200">
+          
+          {/* Venue Badge */}
+          {venueDetection?.atVenue && venueDetection.venue && (
+            <div className="absolute left-4 top-4 rounded-full border border-neon-emerald/60 bg-black/60 px-3 py-1.5 backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">📍</span>
+                <div className="text-xs">
+                  <div className="font-semibold text-neon-emerald">
+                    {venueDetection.venue.name}
+                  </div>
+                  {venueDetection.activeGame && (
+                    <div className="text-neutral-300">
+                      {venueDetection.activeGame.away} @ {venueDetection.activeGame.home}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full border border-ash/60 bg-black/40 px-3 py-1 text-xs uppercase tracking-[0.32em] text-neutral-200">
             Live Mic
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-neon-emerald/70" />

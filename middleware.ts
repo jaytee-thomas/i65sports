@@ -10,7 +10,7 @@ const PUBLIC_ROUTES = [
   "/sign-up(.*)",
 ];
 
-const PUBLIC_API_ROUTES = ["/api/odds(.*)"];
+const PUBLIC_API_ROUTES = ["/api/odds(.*)", "/api/venues/detect"];
 
 const isPublicRoute = createRouteMatcher([...PUBLIC_ROUTES, ...PUBLIC_API_ROUTES]);
 const isPublicApiRoute = createRouteMatcher(PUBLIC_API_ROUTES);
