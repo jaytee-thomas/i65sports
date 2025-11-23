@@ -1,5 +1,5 @@
 import Link from "next/link";
-import OddsTicker from "./components/OddsTicker";
+import EnhancedOddsTicker from "./components/EnhancedOddsTicker";
 
 const scoreboard = [
   {
@@ -89,7 +89,7 @@ const columnistSpotlight = [
 export default function Page() {
   return (
     <div className="space-y-10">
-      <OddsTicker />
+      <EnhancedOddsTicker />
 
       <section className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
         <div className="space-y-4 rounded-3xl border border-ash/70 bg-graphite/70 p-6 shadow-surface">
