@@ -152,44 +152,49 @@ export default function EnhancedOddsTicker() {
         
         <div
           ref={scrollRef}
-          className="flex gap-8 py-4 px-4 overflow-x-hidden"
+          className="flex gap-6 md:gap-8 py-3 md:py-4 px-3 md:px-4 overflow-x-hidden touch-pan-x"
         >
           {duplicatedGames.map((game, index) => (
             <div
               key={`${game.id}-${index}`}
-              className="flex-shrink-0 flex items-center gap-6 px-6 py-2 rounded-lg bg-iron/30 border border-ash backdrop-blur-sm"
+              className="flex-shrink-0 flex items-center gap-4 md:gap-6 px-4 md:px-6 py-2 rounded-lg bg-iron/30 border border-ash backdrop-blur-sm"
             >
+              {/* League badge */}
               <div className="flex items-center gap-2">
                 <span className="px-2 py-1 text-xs font-bold uppercase tracking-wider bg-neon-emerald/20 text-neon-emerald rounded">
                   {game.league}
                 </span>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="text-sm">
+              {/* Game matchup - Smaller on mobile */}
+              <div className="flex items-center gap-2 md:gap-3">
+                <div className="text-xs md:text-sm">
                   <span className="font-semibold text-white">{game.away}</span>
                   <span className="text-neutral-500 mx-1">@</span>
                   <span className="font-semibold text-white">{game.home}</span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              {/* Odds display - More compact on mobile */}
+              <div className="flex items-center gap-3 md:gap-4">
+                {/* Spread */}
                 <div className="text-center">
                   <div className="text-xs text-neutral-500 uppercase tracking-wide mb-1">
                     Spread
                   </div>
-                  <div className="font-mono font-bold text-white">
+                  <div className="font-mono text-xs md:text-sm font-bold text-white">
                     {game.spread > 0 ? "+" : ""}
                     {game.spread}
                   </div>
                 </div>
 
+                {/* Money Line */}
                 <div className="text-center relative">
                   <div className="text-xs text-neutral-500 uppercase tracking-wide mb-1">
                     ML
                   </div>
                   <div
-                    className={`font-mono font-bold transition-colors duration-500 ${
+                    className={`font-mono text-xs md:text-sm font-bold transition-colors duration-500 ${
                       game.movement === "up"
                         ? "text-green-400"
                         : game.movement === "down"
@@ -209,20 +214,22 @@ export default function EnhancedOddsTicker() {
                   </div>
                 </div>
 
+                {/* Over/Under */}
                 <div className="text-center">
                   <div className="text-xs text-neutral-500 uppercase tracking-wide mb-1">
                     O/U
                   </div>
-                  <div className="font-mono font-bold text-white">
+                  <div className="font-mono text-xs md:text-sm font-bold text-white">
                     {game.total}
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <span className="relative flex h-2 w-2">
+              {/* Live indicator - Smaller on mobile */}
+              <div className="flex items-center gap-1 md:gap-1.5">
+                <span className="relative flex h-1.5 w-1.5 md:h-2 md:w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-neon-emerald/70" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-neon-emerald" />
+                  <span className="relative inline-flex h-1.5 w-1.5 md:h-2 md:w-2 rounded-full bg-neon-emerald" />
                 </span>
                 <span className="text-xs uppercase tracking-wider text-neon-emerald font-semibold">
                   Live
