@@ -27,6 +27,13 @@ const config: Config = {
         "text-primary": "#FFFFFF",
         "text-secondary": "#8B95A8",
         "text-muted": "#4A5568",
+        
+        // Semantic color aliases
+        "background-dark": "#0A0E14",
+        "background-medium": "#1A1F2E",
+        "background-light": "#242B3D",
+        "accent": "#00FF88",
+        "border": "#2D3748",
       },
       fontFamily: {
         sans: [

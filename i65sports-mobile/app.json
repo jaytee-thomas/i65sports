@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "i65Sports",
+    "slug": "i65sports",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0E27"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.beechwood.i65sports",
+      "infoPlist": {
+        "NSCameraUsageDescription": "i65Sports needs camera access to record Hot Takes at sporting events.",
+        "NSMicrophoneUsageDescription": "i65Sports needs microphone access to record audio for your Hot Takes.",
+        "NSLocationWhenInUseUsageDescription": "i65Sports uses your location to detect which venue you're at."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0E27"
+      },
+      "package": "com.beechwood.i65sports",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow i65Sports to access your camera to record Hot Takes."
+        }
+      ]
+    ]
+  }
+}
+
