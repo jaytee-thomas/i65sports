@@ -144,10 +144,11 @@ export default function HotTakeDetailScreen() {
   };
 
   const handleVideoPress = () => {
-    setShowControls(!showControls);
-    if (!showControls) {
-      resetControlsTimeout();
-    }
+    // Toggle playback
+    togglePlayback();
+    // Also show controls briefly
+    setShowControls(true);
+    resetControlsTimeout();
   };
 
   const handleLike = async () => {
@@ -279,14 +280,15 @@ export default function HotTakeDetailScreen() {
           </Animated.View>
         )}
 
-        {/* Play Overlay (when paused and controls hidden) */}
-        {!isPlaying && !showControls && !showComments && (
-          <TouchableOpacity
+        {/* Play/Pause Overlay */}
+        {showControls && (
+          <TouchableOpacity 
             style={styles.playOverlay}
-            onPress={handleVideoPress}
+            onPress={togglePlayback}
             activeOpacity={1}
           >
-            <Ionicons name="play-circle" size={80} color="#FFFFFF" />
+            {!isPlaying && <Ionicons name="play-circle" size={80} color="#FFFFFF" />}
+            {isPlaying && <Ionicons name="pause-circle" size={80} color="rgba(255, 255, 255, 0.8)" />}
           </TouchableOpacity>
         )}
       </TouchableOpacity>
@@ -472,7 +474,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.1)', // Lighter so you can see video behind
   },
   infoOverlay: {
     position: 'absolute',
