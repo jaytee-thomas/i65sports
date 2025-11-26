@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as FileSystem from 'expo-file-system/legacy';
+import { generateThumbnail } from '../utils/videoThumbnail';
 
-// Your Mac's IP address on the network
 const API_URL = 'http://192.168.86.226:3000/api';
 
 export interface UploadProgress {
@@ -19,6 +19,10 @@ export const uploadHotTake = async (
   try {
     console.log('Starting upload...', videoUri);
     
+    // Generate thumbnail
+    console.log('Generating thumbnail...');
+    const thumbnailUri = await generateThumbnail(videoUri);
+    
     // Create form data
     const formData = new FormData();
     
@@ -35,6 +39,16 @@ export const uploadHotTake = async (
       type: 'video/quicktime',
       name: filename,
     } as any);
+
+    // Add thumbnail if generated
+    if (thumbnailUri) {
+      const thumbFilename = `thumb-${filename}.jpg`;
+      formData.append('thumbnail', {
+        uri: thumbnailUri,
+        type: 'image/jpeg',
+        name: thumbFilename,
+      } as any);
+    }
 
     // Add metadata
     formData.append('title', title);

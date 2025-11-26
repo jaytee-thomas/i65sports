@@ -18,12 +18,14 @@ export async function POST(request: Request) {
     
     const formData = await request.formData();
     const video = formData.get("video") as File;
+    const thumbnail = formData.get("thumbnail") as File | null;
     const title = formData.get("title") as string;
     const venue = formData.get("venue") as string;
 
     console.log("📝 Title:", title);
     console.log("📍 Venue:", venue);
     console.log("🎥 Video:", video?.name, video?.size, "bytes");
+    console.log("🖼️ Thumbnail:", thumbnail ? thumbnail.name : "No thumbnail");
 
     // Validation
     if (!video) {
@@ -42,27 +44,39 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log("📤 Uploading to R2...");
+    console.log("📤 Uploading video to R2...");
 
-    // Convert file to buffer
-    const arrayBuffer = await video.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Generate unique filename
-    const filename = `hot-takes/${Date.now()}-${video.name}`;
-
-    // Upload to R2
-    const uploadCommand = new PutObjectCommand({
+    // Upload video
+    const videoArrayBuffer = await video.arrayBuffer();
+    const videoBuffer = Buffer.from(videoArrayBuffer);
+    const videoFilename = `hot-takes/${Date.now()}-${video.name}`;
+    const videoUploadCommand = new PutObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME!,
-      Key: filename,
-      Body: buffer,
+      Key: videoFilename,
+      Body: videoBuffer,
       ContentType: video.type || "video/quicktime",
     });
-
-    await s3Client.send(uploadCommand);
-
-    const videoUrl = `${process.env.R2_PUBLIC_URL}/${filename}`;
+    await s3Client.send(videoUploadCommand);
+    const videoUrl = `${process.env.R2_PUBLIC_URL}/${videoFilename}`;
     console.log("✅ Video uploaded to R2:", videoUrl);
+
+    // Upload thumbnail if provided
+    let thumbUrl = null;
+    if (thumbnail) {
+      console.log("📤 Uploading thumbnail to R2...");
+      const thumbArrayBuffer = await thumbnail.arrayBuffer();
+      const thumbBuffer = Buffer.from(thumbArrayBuffer);
+      const thumbFilename = `thumbnails/${Date.now()}-${thumbnail.name}`;
+      const thumbUploadCommand = new PutObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME!,
+        Key: thumbFilename,
+        Body: thumbBuffer,
+        ContentType: thumbnail.type || "image/jpeg",
+      });
+      await s3Client.send(thumbUploadCommand);
+      thumbUrl = `${process.env.R2_PUBLIC_URL}/${thumbFilename}`;
+      console.log("✅ Thumbnail uploaded to R2:", thumbUrl);
+    }
 
     // Create or find test user
     let testUser = await prisma.user.findFirst({
@@ -83,11 +97,12 @@ export async function POST(request: Request) {
 
     console.log("💾 Saving to database...");
 
-    // Save to database
+    // Save to database with thumbnail
     const hotTake = await prisma.hotTake.create({
       data: {
         title,
         videoUrl,
+        thumbUrl: thumbUrl,
         venueName: venue || "Unknown Venue",
         authorId: testUser.id,
       },
@@ -101,7 +116,8 @@ export async function POST(request: Request) {
         id: hotTake.id,
         title: hotTake.title,
         videoUrl: hotTake.videoUrl,
-        venue: hotTake.venue,
+        thumbUrl: hotTake.thumbUrl,
+        venueName: hotTake.venueName,
       },
       message: "Hot Take uploaded successfully! 🔥",
     });

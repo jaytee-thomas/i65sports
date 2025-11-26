@@ -7,8 +7,10 @@ import {
   TouchableOpacity,
   Dimensions,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 
@@ -21,6 +23,7 @@ interface HotTake {
   id: string;
   title: string;
   videoUrl: string;
+  thumbUrl?: string | null;
   venueName: string | null;
   createdAt: string;
   author: {
@@ -63,16 +66,29 @@ export default function HomeScreen() {
       style={styles.card}
       onPress={() => navigation.navigate('HotTakeDetail' as never, { hotTake: item } as never)}
     >
-      {/* Video Thumbnail/Player */}
+      {/* Video Thumbnail */}
       <View style={styles.videoContainer}>
-        <Video
-          source={{ uri: item.videoUrl }}
-          style={styles.video}
-          resizeMode={ResizeMode.COVER}
-          shouldPlay={false}
-          isLooping={false}
-          useNativeControls={false}
-        />
+        {item.thumbUrl ? (
+          <Image 
+            source={{ uri: item.thumbUrl }} 
+            style={styles.thumbnail}
+            resizeMode="cover"
+          />
+        ) : (
+          <Video
+            source={{ uri: item.videoUrl }}
+            style={styles.video}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay={false}
+            isLooping={false}
+            useNativeControls={false}
+          />
+        )}
+        
+        {/* Play Icon Overlay */}
+        <View style={styles.playIconOverlay}>
+          <Ionicons name="play-circle" size={48} color="rgba(255, 255, 255, 0.9)" />
+        </View>
       </View>
       
       {/* Card Info */}
@@ -209,6 +225,16 @@ const styles = StyleSheet.create({
   video: {
     width: '100%',
     height: '100%',
+  },
+  thumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  playIconOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
   },
   cardInfo: {
     padding: 12,

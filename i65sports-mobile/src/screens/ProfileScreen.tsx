@@ -23,6 +23,7 @@ interface HotTake {
   id: string;
   title: string;
   videoUrl: string;
+  thumbUrl?: string | null;
   venueName: string | null;
   createdAt: string;
   _count: {
@@ -98,14 +99,26 @@ export default function ProfileScreen() {
         } as never)
       }
     >
-      {/* Video Thumbnail - In production, you'd use a thumbnail URL */}
-      <View style={styles.thumbnailPlaceholder}>
-        <Ionicons name="play-circle" size={32} color="#FFFFFF" />
+      {item.thumbUrl ? (
+        <Image 
+          source={{ uri: item.thumbUrl }} 
+          style={styles.thumbnailImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={styles.thumbnailPlaceholder}>
+          <Ionicons name="videocam" size={32} color="#FFFFFF" />
+        </View>
+      )}
+
+      {/* Play Icon */}
+      <View style={styles.thumbnailPlayIcon}>
+        <Ionicons name="play" size={20} color="#FFFFFF" />
       </View>
 
       {/* View Count Overlay */}
       <View style={styles.thumbnailOverlay}>
-        <Ionicons name="eye" size={12} color="#FFFFFF" />
+        <Ionicons name="heart" size={12} color="#FFFFFF" />
         <Text style={styles.thumbnailStat}>
           {item._count.reactions || 0}
         </Text>
@@ -287,10 +300,27 @@ const styles = StyleSheet.create({
     margin: 2,
     position: 'relative',
   },
+  thumbnailImage: {
+    width: '100%',
+    height: '100%',
+  },
   thumbnailPlaceholder: {
     width: '100%',
     height: '100%',
     backgroundColor: '#1A1F3A',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  thumbnailPlayIcon: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginTop: -15,
+    marginLeft: -15,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -338,3 +368,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 });
+
