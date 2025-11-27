@@ -19,7 +19,7 @@ import { Share, Alert } from 'react-native';
 import axios from 'axios';
 
 const { width, height } = Dimensions.get('window');
-const API_URL = 'http://192.168.86.226:3000/api';
+const API_URL = 'http://localhost:3000/api'; // For simulator
 
 type RouteParams = {
   HotTakeDetail: {

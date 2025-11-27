@@ -2,7 +2,7 @@ import axios from 'axios';
 import * as FileSystem from 'expo-file-system/legacy';
 import { generateThumbnail } from '../utils/videoThumbnail';
 
-const API_URL = 'http://192.168.86.226:3000/api';
+const API_URL = 'http://localhost:3000/api'; // For simulator
 
 export interface UploadProgress {
   loaded: number;

@@ -17,7 +17,7 @@ const { width } = Dimensions.get('window');
 const COLUMN_COUNT = 3;
 const ITEM_SIZE = (width - 8) / COLUMN_COUNT;
 
-const API_URL = 'http://192.168.86.226:3000/api';
+const API_URL = 'http://localhost:3000/api'; // For simulator
 
 interface HotTake {
   id: string;
