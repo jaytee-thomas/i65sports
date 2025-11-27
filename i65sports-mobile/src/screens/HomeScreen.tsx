@@ -18,7 +18,7 @@ import axios from 'axios';
 
 const { width } = Dimensions.get('window');
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'http://192.168.86.226:3000/api';
 
 const SPORTS = [
   { id: 'all', name: 'All', icon: 'apps' },
@@ -107,19 +107,24 @@ export default function HomeScreen() {
     
     // Filter by sport first
     if (activeSport && activeSport !== 'all') {
-      filtered = filtered.filter(hotTake => 
-        hotTake.sport && hotTake.sport.toLowerCase() === activeSport.toLowerCase()
-      );
+      filtered = filtered.filter(hotTake => {
+        // Safety check: make sure sport exists and is not null
+        if (!hotTake.sport) return false;
+        return hotTake.sport.toLowerCase() === activeSport.toLowerCase();
+      });
     }
     
     // Then filter by search query
     if (query.trim()) {
       const lowerQuery = query.toLowerCase();
-      filtered = filtered.filter(hotTake => 
-        hotTake.title.toLowerCase().includes(lowerQuery) ||
-        hotTake.author.username.toLowerCase().includes(lowerQuery) ||
-        (hotTake.venueName && hotTake.venueName.toLowerCase().includes(lowerQuery))
-      );
+      filtered = filtered.filter(hotTake => {
+        // Safety check each field before calling toLowerCase()
+        const titleMatch = hotTake.title?.toLowerCase().includes(lowerQuery) || false;
+        const usernameMatch = hotTake.author?.username?.toLowerCase().includes(lowerQuery) || false;
+        const venueMatch = hotTake.venueName ? hotTake.venueName.toLowerCase().includes(lowerQuery) : false;
+        
+        return titleMatch || usernameMatch || venueMatch;
+      });
     }
     
     setFilteredHotTakes(filtered);
