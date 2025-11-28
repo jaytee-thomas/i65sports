@@ -174,6 +174,14 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Back Button */}
+      <TouchableOpacity 
+        style={styles.backButton}
+        onPress={() => navigation.goBack()}
+      >
+        <Ionicons name="close" size={32} color="#FFFFFF" />
+      </TouchableOpacity>
+      
       <CameraView
         ref={cameraRef}
         style={styles.camera}
@@ -458,5 +466,17 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     backgroundColor: '#00FF9F',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 25,
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

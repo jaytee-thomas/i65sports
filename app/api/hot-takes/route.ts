@@ -35,7 +35,6 @@ export async function GET(request: Request) {
             id: true,
             username: true,
             email: true,
-            role: true,
           },
         },
         _count: {

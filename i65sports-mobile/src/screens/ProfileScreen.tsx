@@ -8,13 +8,16 @@ import {
   Image,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { ProfileGridSkeleton, Skeleton } from '../components/SkeletonLoader';
 import { handleApiError } from '../utils/errorHandler';
+import FollowButton from '../components/FollowButton';
 import axios from 'axios';
+import Toast from 'react-native-toast-message';
 
 const { width } = Dimensions.get('window');
 const ITEM_SIZE = (width - 8) / 3;
@@ -38,12 +41,14 @@ interface Profile {
   username: string;
   email: string;
   hotTakes: HotTake[];
+  followersCount?: number;
+  followingCount?: number;
 }
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
   const { user } = useUser();
-  const { signOut } = useAuth();
+  const { signOut, getToken } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -57,19 +62,46 @@ export default function ProfileScreen() {
     try {
       setLoading(true);
       
-      // Fetch all hot takes
-      const hotTakesResponse = await axios.get(`${API_URL}/hot-takes?limit=50`);
+      // Fetch all hot takes with timeout
+      const hotTakesResponse = await axios.get(`${API_URL}/hot-takes?limit=50`, {
+        timeout: 15000
+      });
       
       // Filter to only show current user's hot takes
       const userHotTakes = hotTakesResponse.data.hotTakes.filter(
         (ht: any) => ht.author.email === user?.emailAddresses[0].emailAddress
       );
 
+      // Get follow counts
+      let followersCount = 0;
+      let followingCount = 0;
+      if (userHotTakes.length > 0) {
+        const userId = userHotTakes[0].author.id;
+        
+        try {
+          const followersResponse = await axios.get(
+            `${API_URL}/users/${userId}/follows?type=followers`,
+            { timeout: 10000 }
+          );
+          const followingResponse = await axios.get(
+            `${API_URL}/users/${userId}/follows?type=following`,
+            { timeout: 10000 }
+          );
+          
+          followersCount = followersResponse.data.followers?.length || 0;
+          followingCount = followingResponse.data.following?.length || 0;
+        } catch (error) {
+          console.error('Error fetching follow counts:', error);
+        }
+      }
+
       setProfile({
         id: user?.id || '',
         username: user?.username || user?.emailAddresses[0].emailAddress.split('@')[0] || 'user',
         email: user?.emailAddresses[0].emailAddress || '',
         hotTakes: userHotTakes,
+        followersCount,
+        followingCount,
       });
     } catch (error) {
       console.error('Error loading profile:', error);
@@ -80,6 +112,8 @@ export default function ProfileScreen() {
         username: user?.username || 'user',
         email: user?.emailAddresses[0].emailAddress || '',
         hotTakes: [],
+        followersCount: 0,
+        followingCount: 0,
       });
     } finally {
       setLoading(false);
@@ -92,6 +126,49 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('Sign out error:', error);
     }
+  };
+
+  const handleDeleteHotTake = async (hotTakeId: string) => {
+    Alert.alert(
+      'Delete Hot Take',
+      'Are you sure you want to delete this Hot Take? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await getToken();
+              
+              await axios.delete(`${API_URL}/hot-takes/${hotTakeId}`, {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              });
+              
+              Toast.show({
+                type: 'success',
+                text1: 'Deleted',
+                text2: 'Hot Take removed',
+                position: 'bottom',
+              });
+              
+              // Refresh profile
+              loadProfile();
+            } catch (error) {
+              console.error('Error deleting hot take:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Failed to delete',
+                text2: 'Please try again',
+                position: 'bottom',
+              });
+            }
+          },
+        },
+      ]
+    );
   };
 
   const renderVideoThumbnail = ({ item }: { item: HotTake }) => (
@@ -108,6 +185,7 @@ export default function ProfileScreen() {
           },
         } as never)
       }
+      onLongPress={() => handleDeleteHotTake(item.id)}
     >
       {item.thumbUrl ? (
         <Image 
@@ -126,8 +204,12 @@ export default function ProfileScreen() {
       <View style={styles.thumbnailOverlay}>
         <Ionicons name="heart" size={12} color="#FFFFFF" />
         <Text style={styles.thumbnailStat}>
-          {item._count.reactions || 0}
+          {item._count?.reactions || 0}
         </Text>
+      </View>
+      {/* Delete Icon Hint */}
+      <View style={styles.deleteHint}>
+        <Ionicons name="trash-outline" size={12} color="rgba(255, 255, 255, 0.6)" />
       </View>
     </TouchableOpacity>
   );
@@ -183,15 +265,27 @@ export default function ProfileScreen() {
             <Text style={styles.statLabel}>Likes</Text>
           </View>
           <View style={styles.stat}>
-            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statNumber}>{profile?.followersCount || 0}</Text>
             <Text style={styles.statLabel}>Followers</Text>
           </View>
         </View>
         <Text style={styles.username}>@{profile?.username}</Text>
         <Text style={styles.bio}>🏀 Sports fanatic | 🎥 Hot Takes creator</Text>
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <Text style={styles.signOutButtonText}>Sign Out</Text>
-        </TouchableOpacity>
+        {/* Follow Button or Sign Out */}
+        {user?.emailAddresses[0].emailAddress === profile?.email ? (
+          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+            <Text style={styles.signOutButtonText}>Sign Out</Text>
+          </TouchableOpacity>
+        ) : (
+          <FollowButton 
+            userId={profile?.id || ''} 
+            username={profile?.username || ''}
+            onFollowChange={(following) => {
+              // Could update follower count here if needed
+              console.log('Follow status changed:', following);
+            }}
+          />
+        )}
       </View>
 
       {/* Hot Takes Grid */}
@@ -385,6 +479,14 @@ const styles = StyleSheet.create({
     color: '#0A0E27',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  deleteHint: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 10,
+    padding: 4,
   },
   uploadingContainer: {
     padding: 20,

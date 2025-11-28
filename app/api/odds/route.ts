@@ -1,12 +1,25 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
+import { getUpcomingGames, getAllUpcomingGames } from '@/lib/oddsApi';
 
-export async function GET() {
-  // Demo data (replace with a real odds provider and cache in Redis)
-  const items = [
-    { league: "NFL", away: "DAL", home: "PHI", spread: -2.5, total: 47.5, mlAway: +115, mlHome: -135 },
-    { league: "NBA", away: "LAL", home: "GSW", spread: +4.0, total: 230.5, mlAway: +150, mlHome: -170 },
-    { league: "MLB", away: "NYY", home: "BOS", spread: -1.5, total: 8.5, mlAway: -120, mlHome: +105 },
-    { league: "NHL", away: "TOR", home: "MTL", spread: -1.5, total: 6.0, mlAway: -140, mlHome: +125 },
-  ];
-  return NextResponse.json({ items });
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const sport = searchParams.get('sport') as any;
+
+  try {
+    const games = sport 
+      ? await getUpcomingGames(sport)
+      : await getAllUpcomingGames();
+
+    return NextResponse.json({
+      success: true,
+      games,
+      count: games.length,
+    });
+  } catch (error) {
+    console.error('Odds API error:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch odds' },
+      { status: 500 }
+    );
+  }
 }

@@ -10,6 +10,7 @@ import HomeScreen from '../screens/HomeScreen';
 import CameraScreen from '../screens/CameraScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import HotTakeDetailScreen from '../screens/HotTakeDetailScreen';
+import OddsDetailScreen from '../screens/OddsDetailScreen';
 import SignInScreen from '../screens/SignInScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 
@@ -96,12 +97,31 @@ export default function AppNavigator() {
         {isSignedIn ? (
           // Authenticated routes
           <>
-            <Stack.Screen name="MainTabs" component={MainTabs} />
+            <Stack.Screen 
+              name="MainTabs" 
+              component={MainTabs}
+              options={{ headerShown: false }}
+            />
             <Stack.Screen 
               name="HotTakeDetail" 
               component={HotTakeDetailScreen}
               options={{
-                presentation: 'fullScreenModal',
+                headerShown: true,
+                headerStyle: { backgroundColor: '#0A0E27' },
+                headerTintColor: '#FFFFFF',
+                headerTitle: 'Hot Take',
+                headerBackTitle: 'Back',
+              }}
+            />
+            <Stack.Screen 
+              name="OddsDetail" 
+              component={OddsDetailScreen}
+              options={{
+                headerShown: true,
+                headerStyle: { backgroundColor: '#0A0E27' },
+                headerTintColor: '#FFFFFF',
+                headerTitle: 'Game Odds',
+                headerBackTitle: 'Back',
               }}
             />
           </>

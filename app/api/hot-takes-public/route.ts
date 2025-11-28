@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
@@ -14,7 +15,17 @@ const s3Client = new S3Client({
 
 export async function POST(request: Request) {
   try {
-    console.log("📹 [hot-takes-public] Receiving upload...");
+    // Get authenticated user from Clerk
+    const clerkUser = await currentUser();
+    
+    if (!clerkUser) {
+      return NextResponse.json(
+        { error: "Unauthorized - please sign in" },
+        { status: 401 }
+      );
+    }
+
+    console.log("📹 [hot-takes-public] Receiving upload from:", clerkUser.id);
     
     const formData = await request.formData();
     const video = formData.get("video") as File;
@@ -78,37 +89,38 @@ export async function POST(request: Request) {
       console.log("✅ Thumbnail uploaded to R2:", thumbUrl);
     }
 
-    // Create or find test user
-    let testUser = await prisma.user.findFirst({
-      where: { email: "test@i65sports.com" },
+    // Find or create user in database
+    let dbUser = await prisma.user.findUnique({
+      where: { clerkId: clerkUser.id },
     });
 
-    if (!testUser) {
-      console.log("Creating test user...");
-      testUser = await prisma.user.create({
+    if (!dbUser) {
+      // Create user if doesn't exist (shouldn't happen with webhook, but just in case)
+      dbUser = await prisma.user.create({
         data: {
-          clerkId: "test-user-id",
-          email: "test@i65sports.com",
-          username: "testuser",
-          role: "USER",
+          clerkId: clerkUser.id,
+          email: clerkUser.emailAddresses[0].emailAddress,
+          username: clerkUser.username || clerkUser.emailAddresses[0].emailAddress.split('@')[0],
+          role: 'USER',
         },
       });
+      console.log("✅ Created user in database:", dbUser.id);
     }
 
     console.log("💾 Saving to database...");
 
-    // Save to database with thumbnail
+    // Save to database with authenticated user
     const hotTake = await prisma.hotTake.create({
       data: {
         title,
         videoUrl,
         thumbUrl: thumbUrl,
         venueName: venue || "Unknown Venue",
-        authorId: testUser.id,
+        authorId: dbUser.id, // Use the real user's ID!
       },
     });
 
-    console.log("✅ Hot Take saved:", hotTake.id);
+    console.log("✅ Hot Take saved:", hotTake.id, "by user:", dbUser.username);
 
     return NextResponse.json({
       success: true,

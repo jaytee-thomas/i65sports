@@ -13,12 +13,15 @@ model User {
   username  String     @unique
   role      Role       @default(USER)
   createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt @default(now())
   clerkId   String?    @unique
   comments  Comment[]
-  followers Follow[]   @relation("Followers")
-  following Follow[]   @relation("Following")
-  takes     HotTake[]
+  hotTakes  HotTake[]
   reactions Reaction[]
+  
+  // Follow relationships
+  following Follow[] @relation("UserFollows")
+  followers Follow[] @relation("UserFollowers")
 }
 
 model HotTake {
@@ -87,14 +90,16 @@ model Comment {
 }
 
 model Follow {
-  id         String   @id @default(cuid())
-  followerId String
-  followeeId String
-  createdAt  DateTime @default(now())
-  followee   User     @relation("Followers", fields: [followeeId], references: [id])
-  follower   User     @relation("Following", fields: [followerId], references: [id])
+  id          String   @id @default(cuid())
+  followerId  String   // User who is following
+  followingId String   // User being followed
+  createdAt   DateTime @default(now())
+  follower  User @relation("UserFollows", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
 
-  @@unique([followerId, followeeId])
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
 }
 
 model Game {

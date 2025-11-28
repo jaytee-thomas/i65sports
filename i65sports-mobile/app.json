@@ -40,7 +40,12 @@
           "cameraPermission": "Allow i65Sports to access your camera to record Hot Takes."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id-here"
+      }
+    }
   }
 }
 

@@ -1,24 +1,33 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   Dimensions,
   ActivityIndicator,
   Image,
   TextInput,
   ScrollView,
+  Alert,
+  Animated,
+  FlatList,
+  RefreshControl,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useUser, useAuth } from '@clerk/clerk-expo';
 import { HotTakeCardSkeleton } from '../components/SkeletonLoader';
 import { handleApiError } from '../utils/errorHandler';
+import OddsTicker from '../components/OddsTicker';
 import axios from 'axios';
+import Toast from 'react-native-toast-message';
 
 const { width } = Dimensions.get('window');
+
+// Create AnimatedFlatList for native driver support
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<HotTake>);
 
 const API_URL = 'http://192.168.86.226:3000/api';
 
@@ -41,11 +50,14 @@ interface HotTake {
   sport?: string | null;
   author: {
     username: string;
+    email: string;
   };
 }
 
 export default function HomeScreen() {
   const navigation = useNavigation();
+  const { user } = useUser();
+  const { getToken } = useAuth();
   const [hotTakes, setHotTakes] = useState<HotTake[]>([]);
   const [filteredHotTakes, setFilteredHotTakes] = useState<HotTake[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,6 +68,15 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [selectedSport, setSelectedSport] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Fade effect for header
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 150],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
 
   useEffect(() => {
     fetchHotTakes();
@@ -80,7 +101,10 @@ export default function HomeScreen() {
         params.cursor = cursor;
       }
 
-      const response = await axios.get(`${API_URL}/hot-takes`, { params });
+      const response = await axios.get(`${API_URL}/hot-takes`, { 
+        params,
+        timeout: 15000 // 15 second timeout
+      });
       
       console.log('Hot Takes loaded:', response.data.hotTakes.length);
       
@@ -153,44 +177,186 @@ export default function HomeScreen() {
     }
   };
 
-  const renderHotTake = ({ item }: { item: HotTake }) => (
-    <TouchableOpacity 
-      style={styles.card}
-      onPress={() => navigation.navigate('HotTakeDetail' as never, { hotTake: item } as never)}
-    >
-      <View style={styles.videoContainer}>
-        {item.thumbUrl ? (
-          <Image 
-            source={{ uri: item.thumbUrl }} 
-            style={styles.thumbnail}
-            resizeMode="cover"
-          />
-        ) : (
-          <Video
-            source={{ uri: item.videoUrl }}
-            style={styles.video}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay={false}
-            isLooping={false}
-            useNativeControls={false}
-          />
-        )}
-        
-        <View style={styles.playIconOverlay}>
-          <Ionicons name="play-circle" size={48} color="rgba(255, 255, 255, 0.9)" />
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchHotTakes();
+    setRefreshing(false);
+  };
+
+  const handleDeleteHotTake = async (hotTakeId: string) => {
+    Alert.alert(
+      'Delete Hot Take',
+      'Are you sure you want to delete this Hot Take?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await getToken();
+              
+              await axios.delete(`${API_URL}/hot-takes/${hotTakeId}`, {
+                timeout: 10000,
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              });
+              
+              Toast.show({
+                type: 'success',
+                text1: 'Deleted! 🗑️',
+                position: 'bottom',
+              });
+              
+              // Remove from local state
+              setHotTakes(prev => prev.filter(ht => ht.id !== hotTakeId));
+              setFilteredHotTakes(prev => prev.filter(ht => ht.id !== hotTakeId));
+            } catch (error) {
+              console.error('Error deleting:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Failed to delete',
+                position: 'bottom',
+              });
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const renderHotTake = ({ item }: { item: HotTake }) => {
+    const isMyHotTake = item.author.email === user?.emailAddresses[0].emailAddress;
+    
+    return (
+      <TouchableOpacity 
+        style={styles.card}
+        onPress={() => (navigation as any).navigate('HotTakeDetail', { hotTake: item })}
+      >
+        <View style={styles.videoContainer}>
+          {item.thumbUrl ? (
+            <Image 
+              source={{ uri: item.thumbUrl }} 
+              style={styles.thumbnail}
+              resizeMode="cover"
+            />
+          ) : (
+            <Video
+              source={{ uri: item.videoUrl }}
+              style={styles.video}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay={false}
+              isLooping={false}
+              useNativeControls={false}
+            />
+          )}
+          
+          <View style={styles.playIconOverlay}>
+            <Ionicons name="play-circle" size={48} color="rgba(255, 255, 255, 0.9)" />
+          </View>
         </View>
+        
+        <View style={styles.cardInfo}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleContainer}>
+              <Text style={styles.cardTitle}>{item.title}</Text>
+              <Text style={styles.cardMeta}>
+                {item.venueName || 'Unknown Venue'} • @{item.author.username}
+              </Text>
+              <Text style={styles.cardDate}>
+                {new Date(item.createdAt).toLocaleDateString()}
+              </Text>
+            </View>
+            
+            {isMyHotTake && (
+              <TouchableOpacity 
+                style={styles.deleteButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleDeleteHotTake(item.id);
+                }}
+              >
+                <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderListHeader = () => (
+    <Animated.View style={{ opacity: headerOpacity }}>
+      {/* Odds Ticker */}
+      <OddsTicker />
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <Ionicons 
+          name="search" 
+          size={20} 
+          color="#8892A6" 
+          style={styles.searchIcon}
+        />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by title, user, or venue..."
+          placeholderTextColor="#8892A6"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+            <Ionicons name="close-circle" size={20} color="#8892A6" />
+          </TouchableOpacity>
+        )}
       </View>
-      
-      <View style={styles.cardInfo}>
-        <Text style={styles.cardTitle}>{item.title}</Text>
-        <Text style={styles.cardMeta}>
-          {item.venueName || 'Unknown Venue'} • @{item.author.username}
-        </Text>
-        <Text style={styles.cardDate}>
-          {new Date(item.createdAt).toLocaleDateString()}
-        </Text>
-      </View>
-    </TouchableOpacity>
+
+      {/* Sport Filters */}
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.filtersContainer}
+        contentContainerStyle={styles.filtersContent}
+      >
+        {SPORTS.map(sport => (
+          <TouchableOpacity
+            key={sport.id}
+            style={[
+              styles.filterChip,
+              (selectedSport === sport.id || (sport.id === 'all' && !selectedSport)) && styles.filterChipActive
+            ]}
+            onPress={() => handleSportFilter(sport.id)}
+          >
+            <Ionicons 
+              name={sport.icon as any} 
+              size={16} 
+              color={(selectedSport === sport.id || (sport.id === 'all' && !selectedSport)) ? '#0A0E27' : '#B8C5D6'} 
+            />
+            <Text style={[
+              styles.filterChipText,
+              (selectedSport === sport.id || (sport.id === 'all' && !selectedSport)) && styles.filterChipTextActive
+            ]}>
+              {sport.name}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <Text style={styles.headerSubtitle}>
+        {isSearching ? (
+          `${filteredHotTakes.length} result${filteredHotTakes.length !== 1 ? 's' : ''}`
+        ) : (
+          <>
+            {hotTakes.length} {hotTakes.length === 1 ? 'take' : 'takes'}
+            {hasMore && ' • Scroll for more'}
+          </>
+        )}
+      </Text>
+    </Animated.View>
   );
 
   const renderFooter = () => {
@@ -265,86 +431,50 @@ export default function HomeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>TRENDING HOT TAKES 🔥</Text>
-        
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <Ionicons 
-            name="search" 
-            size={20} 
-            color="#8892A6" 
-            style={styles.searchIcon}
-          />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by title, user, or venue..."
-            placeholderTextColor="#8892A6"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
-              <Ionicons name="close-circle" size={20} color="#8892A6" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Filter Chips */}
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          style={styles.filtersContainer}
-          contentContainerStyle={styles.filtersContent}
-        >
-          {SPORTS.map(sport => (
-            <TouchableOpacity
-              key={sport.id}
-              style={[
-                styles.filterChip,
-                (selectedSport === sport.id || (sport.id === 'all' && !selectedSport)) && styles.filterChipActive
-              ]}
-              onPress={() => handleSportFilter(sport.id)}
-            >
-              <Ionicons 
-                name={sport.icon as any} 
-                size={16} 
-                color={(selectedSport === sport.id || (sport.id === 'all' && !selectedSport)) ? '#0A0E27' : '#B8C5D6'} 
-              />
-              <Text style={[
-                styles.filterChipText,
-                (selectedSport === sport.id || (sport.id === 'all' && !selectedSport)) && styles.filterChipTextActive
-              ]}>
-                {sport.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        <Text style={styles.headerSubtitle}>
-          {isSearching ? (
-            `${filteredHotTakes.length} result${filteredHotTakes.length !== 1 ? 's' : ''}`
-          ) : (
-            <>
-              {hotTakes.length} {hotTakes.length === 1 ? 'take' : 'takes'}
-              {hasMore && ' • Scroll for more'}
-            </>
-          )}
-        </Text>
       </View>
 
       {/* Hot Takes List */}
-      <FlatList
+      <AnimatedFlatList
         data={displayedHotTakes}
         renderItem={renderHotTake}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        refreshing={loading}
-        onRefresh={() => fetchHotTakes()}
+        showsVerticalScrollIndicator={false}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.5}
-        ListFooterComponent={renderFooter}
-        ListEmptyComponent={renderEmpty}
+        ListHeaderComponent={renderListHeader}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="large" color="#00FF9F" />
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="videocam-off" size={64} color="#8892A6" />
+              <Text style={styles.emptyText}>No Hot Takes found</Text>
+              <Text style={styles.emptySubtext}>Be the first to record one!</Text>
+            </View>
+          )
+        }
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.footerLoader}>
+              <ActivityIndicator size="small" color="#00FF9F" />
+            </View>
+          ) : null
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#00FF9F"
+          />
+        }
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true }
+        )}
+        scrollEventThrottle={16}
       />
     </View>
   );
@@ -463,11 +593,23 @@ const styles = StyleSheet.create({
   cardInfo: {
     padding: 12,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  cardTitleContainer: {
+    flex: 1,
+  },
   cardTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 4,
+  },
+  deleteButton: {
+    padding: 8,
+    marginLeft: 8,
   },
   cardMeta: {
     fontSize: 12,
