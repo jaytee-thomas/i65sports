@@ -1,0 +1,119 @@
+import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '@clerk/clerk-expo';
+
+// Screens
+import HomeScreen from '../screens/HomeScreen';
+import CameraScreen from '../screens/CameraScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import HotTakeDetailScreen from '../screens/HotTakeDetailScreen';
+import SignInScreen from '../screens/SignInScreen';
+import SignUpScreen from '../screens/SignUpScreen';
+
+const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
+
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName: keyof typeof Ionicons.glyphMap;
+
+          if (route.name === 'Home') {
+            iconName = focused ? 'home' : 'home-outline';
+          } else if (route.name === 'Camera') {
+            iconName = focused ? 'camera' : 'camera-outline';
+          } else if (route.name === 'Profile') {
+            iconName = focused ? 'person' : 'person-outline';
+          } else {
+            iconName = 'help-outline';
+          }
+
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+        tabBarActiveTintColor: '#00FF9F',
+        tabBarInactiveTintColor: '#8892A6',
+        tabBarStyle: {
+          backgroundColor: '#1A1F3A',
+          borderTopColor: '#3A4166',
+          height: 85,
+          paddingBottom: 25,
+          paddingTop: 10,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        },
+        headerStyle: {
+          backgroundColor: '#0A0E27',
+        },
+        headerTintColor: '#FFFFFF',
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+      })}
+    >
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          headerTitle: 'i65Sports',
+          headerTitleAlign: 'center',
+        }}
+      />
+      <Tab.Screen
+        name="Camera"
+        component={CameraScreen}
+        options={{
+          headerShown: false,
+          tabBarStyle: { display: 'none' },
+        }}
+      />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
+    </Tab.Navigator>
+  );
+}
+
+export default function AppNavigator() {
+  const { isSignedIn, isLoaded } = useAuth();
+
+  // Wait for auth to load
+  if (!isLoaded) {
+    return null;
+  }
+
+  return (
+    <NavigationContainer>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
+        {isSignedIn ? (
+          // Authenticated routes
+          <>
+            <Stack.Screen name="MainTabs" component={MainTabs} />
+            <Stack.Screen 
+              name="HotTakeDetail" 
+              component={HotTakeDetailScreen}
+              options={{
+                presentation: 'fullScreenModal',
+              }}
+            />
+          </>
+        ) : (
+          // Unauthenticated routes
+          <>
+            <Stack.Screen name="SignIn" component={SignInScreen} />
+            <Stack.Screen name="SignUp" component={SignUpScreen} />
+          </>
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+

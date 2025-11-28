@@ -11,9 +11,15 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
+import { useUser, useAuth } from '@clerk/clerk-expo';
+import { useNavigation } from '@react-navigation/native';
+import Toast from 'react-native-toast-message';
 import { uploadHotTake, UploadProgress } from '../services/upload';
 
 export default function CameraScreen() {
+  const { user } = useUser();
+  const { getToken } = useAuth();
+  const navigation = useNavigation();
   const [permission, requestPermission] = useCameraPermissions();
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -103,30 +109,58 @@ export default function CameraScreen() {
       return;
     }
 
-    console.log('Starting upload process...');
-    setIsUploading(true);
+    if (!user) {
+      Alert.alert('Error', 'Please sign in to upload Hot Takes');
+      return;
+    }
 
     try {
-      await uploadHotTake(
+      setIsUploading(true);
+      setUploadProgress(0);
+      
+      // Get auth token from Clerk
+      const token = await getToken();
+      
+      const result = await uploadHotTake(
         videoUri,
         title,
         'Unknown Venue',
         (progress: UploadProgress) => {
-          console.log('Upload progress:', progress.percentage);
           setUploadProgress(progress.percentage);
-        }
+        },
+        token || undefined // Pass auth token
       );
 
-      Alert.alert('Success!', 'Your Hot Take has been uploaded! 🔥');
-      setShowUploadModal(false);
+      console.log('Upload successful!', result);
+      
+      // Show success toast
+      Toast.show({
+        type: 'success',
+        text1: 'Hot Take Uploaded! 🔥',
+        text2: 'Your video is now live!',
+        position: 'top',
+        visibilityTime: 3000,
+      });
+      
+      // Reset and go back to home
       setVideoUri(null);
       setTitle('');
-      setUploadProgress(0);
-    } catch (error) {
+      setShowUploadModal(false);
+      navigation.navigate('Home' as never);
+    } catch (error: any) {
       console.error('Upload failed:', error);
-      Alert.alert('Upload Failed', String(error));
+      
+      // Show error toast
+      Toast.show({
+        type: 'error',
+        text1: 'Upload Failed',
+        text2: error.response?.data?.error || 'Please try again',
+        position: 'top',
+        visibilityTime: 4000,
+      });
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 

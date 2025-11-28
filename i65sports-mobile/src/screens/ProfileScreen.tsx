@@ -6,16 +6,18 @@ import {
   FlatList,
   TouchableOpacity,
   Image,
-  Dimensions,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useUser, useAuth } from '@clerk/clerk-expo';
+import { ProfileGridSkeleton, Skeleton } from '../components/SkeletonLoader';
+import { handleApiError } from '../utils/errorHandler';
 import axios from 'axios';
 
 const { width } = Dimensions.get('window');
-const COLUMN_COUNT = 3;
-const ITEM_SIZE = (width - 8) / COLUMN_COUNT;
+const ITEM_SIZE = (width - 8) / 3;
 
 const API_URL = 'http://192.168.86.226:3000/api';
 
@@ -23,16 +25,15 @@ interface HotTake {
   id: string;
   title: string;
   videoUrl: string;
-  thumbUrl?: string | null;
-  venueName: string | null;
+  thumbUrl: string | null;
   createdAt: string;
   _count: {
-    comments: number;
     reactions: number;
+    comments: number;
   };
 }
 
-interface UserProfile {
+interface Profile {
   id: string;
   username: string;
   email: string;
@@ -41,46 +42,55 @@ interface UserProfile {
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const { user } = useUser();
+  const { signOut } = useAuth();
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Test user ID
-  const userId = 'cmig5amau0000st344d7gkjti';
-
   useEffect(() => {
-    loadProfile();
-  }, []);
+    if (user) {
+      loadProfile();
+    }
+  }, [user]);
 
   const loadProfile = async () => {
     try {
       setLoading(true);
       
-      // Just fetch user's hot takes - we already know the user info
-      const hotTakesResponse = await axios.get(
-        `${API_URL}/hot-takes?limit=50`
-      );
-
-      // Filter to only show testuser's hot takes
+      // Fetch all hot takes
+      const hotTakesResponse = await axios.get(`${API_URL}/hot-takes?limit=50`);
+      
+      // Filter to only show current user's hot takes
       const userHotTakes = hotTakesResponse.data.hotTakes.filter(
-        (ht: any) => ht.author.username === 'testuser'
+        (ht: any) => ht.author.email === user?.emailAddresses[0].emailAddress
       );
 
       setProfile({
-        id: userId,
-        username: 'testuser',
-        email: 'test@i65sports.com',
+        id: user?.id || '',
+        username: user?.username || user?.emailAddresses[0].emailAddress.split('@')[0] || 'user',
+        email: user?.emailAddresses[0].emailAddress || '',
         hotTakes: userHotTakes,
       });
     } catch (error) {
       console.error('Error loading profile:', error);
+      handleApiError(error, 'Loading Profile');
+      
       setProfile({
-        id: userId,
-        username: 'testuser',
-        email: 'test@i65sports.com',
+        id: user?.id || '',
+        username: user?.username || 'user',
+        email: user?.emailAddresses[0].emailAddress || '',
         hotTakes: [],
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Sign out error:', error);
     }
   };
 
@@ -92,8 +102,8 @@ export default function ProfileScreen() {
           hotTake: {
             ...item,
             author: {
-              id: userId,
-              username: profile?.username || 'testuser',
+              id: profile?.id,
+              username: profile?.username || 'user',
             },
           },
         } as never)
@@ -110,13 +120,9 @@ export default function ProfileScreen() {
           <Ionicons name="videocam" size={32} color="#FFFFFF" />
         </View>
       )}
-
-      {/* Play Icon */}
       <View style={styles.thumbnailPlayIcon}>
         <Ionicons name="play" size={20} color="#FFFFFF" />
       </View>
-
-      {/* View Count Overlay */}
       <View style={styles.thumbnailOverlay}>
         <Ionicons name="heart" size={12} color="#FFFFFF" />
         <Text style={styles.thumbnailStat}>
@@ -128,14 +134,31 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#00FF9F" />
-        <Text style={styles.loadingText}>Loading Profile...</Text>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.avatarContainer}>
+            <Skeleton width={80} height={80} borderRadius={40} />
+          </View>
+          <View style={styles.statsRow}>
+            {[1, 2, 3].map((i) => (
+              <View key={i} style={styles.stat}>
+                <Skeleton width={40} height={24} />
+                <Skeleton width={60} height={14} style={{ marginTop: 4 }} />
+              </View>
+            ))}
+          </View>
+          <Skeleton width={120} height={20} style={{ alignSelf: 'center', marginBottom: 8 }} />
+          <Skeleton width={200} height={16} style={{ alignSelf: 'center', marginBottom: 16 }} />
+        </View>
+        <View style={{ padding: 2 }}>
+          <ProfileGridSkeleton />
+          <ProfileGridSkeleton />
+          <ProfileGridSkeleton />
+        </View>
       </View>
     );
   }
 
-  const hotTakesCount = profile?.hotTakes.length || 0;
   const totalLikes = profile?.hotTakes.reduce(
     (sum, ht) => sum + (ht._count.reactions || 0),
     0
@@ -145,17 +168,14 @@ export default function ProfileScreen() {
     <View style={styles.container}>
       {/* Profile Header */}
       <View style={styles.header}>
-        {/* Avatar */}
         <View style={styles.avatarContainer}>
           <View style={styles.avatar}>
             <Ionicons name="person" size={40} color="#00FF9F" />
           </View>
         </View>
-
-        {/* Stats */}
-        <View style={styles.stats}>
+        <View style={styles.statsRow}>
           <View style={styles.stat}>
-            <Text style={styles.statNumber}>{hotTakesCount}</Text>
+            <Text style={styles.statNumber}>{profile?.hotTakes.length || 0}</Text>
             <Text style={styles.statLabel}>Hot Takes</Text>
           </View>
           <View style={styles.stat}>
@@ -167,38 +187,28 @@ export default function ProfileScreen() {
             <Text style={styles.statLabel}>Followers</Text>
           </View>
         </View>
+        <Text style={styles.username}>@{profile?.username}</Text>
+        <Text style={styles.bio}>🏀 Sports fanatic | 🎥 Hot Takes creator</Text>
+        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+          <Text style={styles.signOutButtonText}>Sign Out</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Username & Bio */}
-      <View style={styles.info}>
-        <Text style={styles.username}>@{profile?.username || 'testuser'}</Text>
-        <Text style={styles.bio}>
-          🏀 Sports fanatic | 🎥 Hot Takes creator
-        </Text>
-      </View>
-
-      {/* Edit Profile Button */}
-      <TouchableOpacity style={styles.editButton}>
-        <Text style={styles.editButtonText}>Edit Profile</Text>
-      </TouchableOpacity>
-
-      {/* Grid of Hot Takes */}
-      {hotTakesCount > 0 ? (
+      {/* Hot Takes Grid */}
+      {profile?.hotTakes && profile.hotTakes.length > 0 ? (
         <FlatList
-          data={profile?.hotTakes}
+          data={profile.hotTakes}
           renderItem={renderVideoThumbnail}
           keyExtractor={(item) => item.id}
-          numColumns={COLUMN_COUNT}
+          numColumns={3}
           contentContainerStyle={styles.grid}
-          showsVerticalScrollIndicator={false}
+          columnWrapperStyle={styles.row}
         />
       ) : (
         <View style={styles.emptyState}>
           <Ionicons name="videocam-outline" size={64} color="#3A4166" />
-          <Text style={styles.emptyText}>No Hot Takes Yet</Text>
-          <Text style={styles.emptySubtext}>
-            Record your first take from the Camera tab
-          </Text>
+          <Text style={styles.emptyText}>No Hot Takes yet</Text>
+          <Text style={styles.emptySubtext}>Tap the camera to record your first one!</Text>
           <TouchableOpacity
             style={styles.recordButton}
             onPress={() => navigation.navigate('Camera' as never)}
@@ -228,27 +238,28 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   header: {
-    flexDirection: 'row',
-    padding: 16,
-    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#3A4166',
   },
   avatarContainer: {
-    marginRight: 24,
+    alignItems: 'center',
+    marginBottom: 20,
   },
   avatar: {
     width: 80,
     height: 80,
     borderRadius: 40,
     backgroundColor: '#1A1F3A',
-    justifyContent: 'center',
-    alignItems: 'center',
     borderWidth: 2,
     borderColor: '#00FF9F',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  stats: {
-    flex: 1,
+  statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    marginBottom: 20,
   },
   stat: {
     alignItems: 'center',
@@ -263,41 +274,45 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#B8C5D6',
   },
-  info: {
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
   username: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 4,
+    textAlign: 'center',
+    marginBottom: 8,
   },
   bio: {
     fontSize: 14,
     color: '#B8C5D6',
-  },
-  editButton: {
-    marginHorizontal: 16,
+    textAlign: 'center',
     marginBottom: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#3A4166',
-    alignItems: 'center',
   },
-  editButtonText: {
-    color: '#FFFFFF',
+  signOutButton: {
+    borderWidth: 1,
+    borderColor: '#FF6B6B',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignSelf: 'center',
+  },
+  signOutButtonText: {
+    color: '#FF6B6B',
     fontSize: 14,
     fontWeight: '600',
   },
   grid: {
     padding: 2,
   },
+  row: {
+    justifyContent: 'flex-start',
+  },
   videoThumbnail: {
     width: ITEM_SIZE - 4,
     height: ITEM_SIZE - 4,
     margin: 2,
+    backgroundColor: '#1A1F3A',
+    borderRadius: 4,
+    overflow: 'hidden',
     position: 'relative',
   },
   thumbnailImage: {
@@ -331,6 +346,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   thumbnailStat: {
     color: '#FFFFFF',
@@ -367,5 +386,36 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  uploadingContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  progressWrapper: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  progressBarContainer: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#2A3154',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#00FF9F',
+    borderRadius: 4,
+  },
+  progressText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  uploadingText: {
+    color: '#B8C5D6',
+    fontSize: 14,
+    textAlign: 'center',
+  },
 });
-

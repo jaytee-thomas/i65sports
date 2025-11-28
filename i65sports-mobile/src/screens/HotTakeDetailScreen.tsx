@@ -16,6 +16,7 @@ import { Video, ResizeMode, AVPlaybackStatus, AVPlaybackStatusSuccess } from 'ex
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { Share, Alert } from 'react-native';
+import Toast from 'react-native-toast-message';
 import axios from 'axios';
 
 const { width, height } = Dimensions.get('window');
@@ -178,6 +179,13 @@ export default function HotTakeDetailScreen() {
       console.error('Error liking:', error);
       setIsLiked(!isLiked);
       setLikeCount(isLiked ? likeCount + 1 : likeCount - 1);
+      
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to like',
+        text2: 'Please try again',
+        position: 'bottom',
+      });
     }
   };
 
@@ -196,8 +204,22 @@ export default function HotTakeDetailScreen() {
 
       setComments([response.data.comment, ...comments]);
       setNewComment('');
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Comment Posted! 💬',
+        position: 'bottom',
+        visibilityTime: 2000,
+      });
     } catch (error) {
       console.error('Error posting comment:', error);
+      
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to post comment',
+        text2: 'Please try again',
+        position: 'bottom',
+      });
     } finally {
       setIsSubmitting(false);
     }

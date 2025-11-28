@@ -14,7 +14,8 @@ export const uploadHotTake = async (
   videoUri: string,
   title: string,
   venue?: string,
-  onProgress?: (progress: UploadProgress) => void
+  onProgress?: (progress: UploadProgress) => void,
+  authToken?: string // Add auth token parameter
 ): Promise<any> => {
   try {
     console.log('Starting upload...', videoUri);
@@ -58,11 +59,18 @@ export const uploadHotTake = async (
 
     console.log('Uploading to:', `${API_URL}/hot-takes-public`);
 
-    // Upload to your backend - NOTE: using /hot-takes-public now!
+    // Build headers with auth token
+    const headers: any = {
+      'Content-Type': 'multipart/form-data',
+    };
+
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
+    // Upload to your backend
     const response = await axios.post(`${API_URL}/hot-takes-public`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+      headers,
       onUploadProgress: (progressEvent) => {
         if (onProgress && progressEvent.total) {
           const percentage = Math.round(

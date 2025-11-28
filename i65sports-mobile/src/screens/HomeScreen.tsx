@@ -14,6 +14,8 @@ import {
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { HotTakeCardSkeleton } from '../components/SkeletonLoader';
+import { handleApiError } from '../utils/errorHandler';
 import axios from 'axios';
 
 const { width } = Dimensions.get('window');
@@ -93,6 +95,7 @@ export default function HomeScreen() {
       setError(null);
     } catch (err) {
       console.error('Error fetching Hot Takes:', err);
+      handleApiError(err, 'Loading Hot Takes');
       setError('Failed to load Hot Takes');
     } finally {
       setLoading(false);
@@ -226,11 +229,19 @@ export default function HomeScreen() {
 
   const displayedHotTakes = searchQuery.trim() || selectedSport ? filteredHotTakes : hotTakes;
 
-  if (loading) {
+  if (loading && hotTakes.length === 0) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#00FF9F" />
-        <Text style={styles.loadingText}>Loading Hot Takes...</Text>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>TRENDING HOT TAKES 🔥</Text>
+        </View>
+        {/* Skeleton Loading */}
+        <View style={styles.list}>
+          <HotTakeCardSkeleton />
+          <HotTakeCardSkeleton />
+          <HotTakeCardSkeleton />
+        </View>
       </View>
     );
   }
