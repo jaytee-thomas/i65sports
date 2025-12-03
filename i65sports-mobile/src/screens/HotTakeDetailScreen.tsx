@@ -11,13 +11,20 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
-import { Video, ResizeMode, AVPlaybackStatus, AVPlaybackStatusSuccess } from 'expo-av';
+import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-import { Share, Alert } from 'react-native';
+import { Share } from 'react-native';
+import { useAuth, useUser } from '@clerk/clerk-expo';
 import Toast from 'react-native-toast-message';
 import axios from 'axios';
+import socketService from '../services/socket';
+import { LiveReactionBar } from '../components/LiveReactionBar';
+import { FloatingEmojiContainer } from '../components/FloatingEmojiContainer';
+import { LiveChatRoom } from '../components/LiveChatRoom';
+import { TrendingBadge } from '../components/TrendingBadge';
 
 const { width, height } = Dimensions.get('window');
 const API_URL = 'http://192.168.86.226:3000/api';
@@ -34,6 +41,10 @@ type RouteParams = {
         id: string;
         username: string;
       };
+      _count?: {
+        reactions: number;
+        comments: number;
+      };
     };
   };
 };
@@ -45,6 +56,7 @@ interface Comment {
   author: {
     id: string;
     username: string;
+    avatarUrl?: string;
   };
 }
 
@@ -52,10 +64,13 @@ export default function HotTakeDetailScreen() {
   const route = useRoute<RouteProp<RouteParams, 'HotTakeDetail'>>();
   const navigation = useNavigation();
   const { hotTake } = route.params;
+  const { getToken } = useAuth();
+  const { user } = useUser();
+
   const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(0);
+  const [likeCount, setLikeCount] = useState(hotTake._count?.reactions || 0);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [showComments, setShowComments] = useState(false);
@@ -63,20 +78,64 @@ export default function HotTakeDetailScreen() {
   const [showControls, setShowControls] = useState(true);
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
+
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  const userId = 'cmig5amau0000st344d7gkjti';
+  // Live features state
+  const [showChat, setShowChat] = useState(false);
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [reactionCounts, setReactionCounts] = useState<{ [emoji: string]: number }>({});
+  const [floatingEmojis, setFloatingEmojis] = useState<Array<{ emoji: string; timestamp: number }>>([]);
+  const [trendingLabel, setTrendingLabel] = useState('');
 
   useEffect(() => {
-    loadLikes();
     loadComments();
   }, []);
 
+  // Socket connection for live features
+  useEffect(() => {
+    const gameId = hotTake.id; // Using takeId as gameId for now
+    
+    // Join game room
+    socketService.joinGame(gameId);
+
+    // Listen for reactions
+    const reactionHandler = (data: any) => {
+      console.log('⚡ Received reaction:', data);
+      
+      // Update reaction counts
+      setReactionCounts((prev) => ({
+        ...prev,
+        [data.emoji]: (prev[data.emoji] || 0) + 1,
+      }));
+
+      // Add floating emoji
+      setFloatingEmojis((prev) => [
+        ...prev,
+        { emoji: data.emoji, timestamp: Date.now() },
+      ]);
+    };
+
+    // Listen for chat messages
+    const messageHandler = (data: any) => {
+      console.log('💬 Received message:', data);
+      setChatMessages((prev) => [...prev, data]);
+    };
+
+    socketService.onReaction(reactionHandler);
+    socketService.onMessage(messageHandler);
+
+    return () => {
+      socketService.leaveGame(gameId);
+      socketService.removeListener('reaction-received', reactionHandler);
+      socketService.removeListener('message-received', messageHandler);
+    };
+  }, [hotTake.id]);
+
   useEffect(() => {
     if (showControls) {
-      // Fade in
       Animated.timing(controlsOpacity, {
         toValue: 1,
         duration: 200,
@@ -84,13 +143,13 @@ export default function HotTakeDetailScreen() {
       }).start();
       resetControlsTimeout();
     } else {
-      // Fade out
       Animated.timing(controlsOpacity, {
         toValue: 0,
         duration: 200,
         useNativeDriver: true,
       }).start();
     }
+
     return () => {
       if (controlsTimeout.current) {
         clearTimeout(controlsTimeout.current);
@@ -107,24 +166,16 @@ export default function HotTakeDetailScreen() {
     }, 3000);
   };
 
-  const loadLikes = async () => {
-    try {
-      const response = await axios.get(
-        `${API_URL}/hot-takes-public/${hotTake.id}/like?userId=${userId}`
-      );
-      setLikeCount(response.data.likeCount);
-      setIsLiked(response.data.isLiked);
-    } catch (error) {
-      console.error('Error loading likes:', error);
-    }
-  };
-
   const loadComments = async () => {
     try {
+      const token = await getToken();
       const response = await axios.get(
-        `${API_URL}/hot-takes-public/${hotTake.id}/comments`
+        `${API_URL}/hot-takes/${hotTake.id}/comments`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
-      setComments(response.data.comments);
+      setComments(response.data.comments || []);
     } catch (error) {
       console.error('Error loading comments:', error);
     }
@@ -133,7 +184,7 @@ export default function HotTakeDetailScreen() {
   const togglePlayback = async () => {
     setShowControls(true);
     resetControlsTimeout();
-    
+
     if (videoRef.current) {
       if (isPlaying) {
         await videoRef.current.pauseAsync();
@@ -145,9 +196,7 @@ export default function HotTakeDetailScreen() {
   };
 
   const handleVideoPress = () => {
-    // Toggle playback
     togglePlayback();
-    // Also show controls briefly
     setShowControls(true);
     resetControlsTimeout();
   };
@@ -156,9 +205,12 @@ export default function HotTakeDetailScreen() {
     try {
       const newLiked = !isLiked;
       const newCount = newLiked ? likeCount + 1 : likeCount - 1;
+      
+      // Optimistic update
       setIsLiked(newLiked);
       setLikeCount(newCount);
 
+      // Animate
       Animated.sequence([
         Animated.timing(scaleAnim, {
           toValue: 1.3,
@@ -172,14 +224,29 @@ export default function HotTakeDetailScreen() {
         }),
       ]).start();
 
-      await axios.post(`${API_URL}/hot-takes-public/${hotTake.id}/like`, {
-        userId,
+      // API call
+      const token = await getToken();
+      await axios.post(
+        `${API_URL}/hot-takes/${hotTake.id}/reactions`,
+        { type: 'LIKE' },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      Toast.show({
+        type: 'success',
+        text1: newLiked ? 'Liked! ❤️' : 'Unliked',
+        position: 'bottom',
+        visibilityTime: 1000,
       });
     } catch (error) {
       console.error('Error liking:', error);
+      
+      // Revert on error
       setIsLiked(!isLiked);
       setLikeCount(isLiked ? likeCount + 1 : likeCount - 1);
-      
+
       Toast.show({
         type: 'error',
         text1: 'Failed to like',
@@ -194,17 +261,19 @@ export default function HotTakeDetailScreen() {
 
     try {
       setIsSubmitting(true);
+      const token = await getToken();
+      
       const response = await axios.post(
-        `${API_URL}/hot-takes-public/${hotTake.id}/comments`,
+        `${API_URL}/hot-takes/${hotTake.id}/comments`,
+        { text: newComment.trim() },
         {
-          userId,
-          content: newComment.trim(),
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
 
       setComments([response.data.comment, ...comments]);
       setNewComment('');
-      
+
       Toast.show({
         type: 'success',
         text1: 'Comment Posted! 💬',
@@ -213,7 +282,7 @@ export default function HotTakeDetailScreen() {
       });
     } catch (error) {
       console.error('Error posting comment:', error);
-      
+
       Toast.show({
         type: 'error',
         text1: 'Failed to post comment',
@@ -239,6 +308,29 @@ export default function HotTakeDetailScreen() {
       Alert.alert('Error', 'Failed to share Hot Take');
       console.error('Share error:', error);
     }
+  };
+
+  const handleReaction = (emoji: string) => {
+    const gameId = hotTake.id;
+    
+    socketService.sendReaction({
+      gameId,
+      takeId: hotTake.id,
+      emoji,
+      userId: user?.id || 'current-user-id',
+      username: user?.username || 'current-user',
+    });
+  };
+
+  const handleSendChatMessage = (message: string) => {
+    const gameId = hotTake.id;
+    
+    socketService.sendChatMessage({
+      gameId,
+      userId: user?.id || 'current-user-id',
+      username: user?.username || 'current-user',
+      message,
+    });
   };
 
   const handlePlaybackStatusUpdate = (status: AVPlaybackStatus) => {
@@ -285,15 +377,14 @@ export default function HotTakeDetailScreen() {
 
         {/* Video Controls Overlay */}
         {showControls && (
-          <Animated.View 
-            style={[
-              styles.videoControls,
-              { opacity: controlsOpacity }
-            ]}
+          <Animated.View
+            style={[styles.videoControls, { opacity: controlsOpacity }]}
           >
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+                <View
+                  style={[styles.progressFill, { width: `${progress * 100}%` }]}
+                />
               </View>
               <Text style={styles.timeText}>
                 {formatTime(position)} / {formatTime(duration)}
@@ -303,30 +394,39 @@ export default function HotTakeDetailScreen() {
         )}
 
         {/* Play/Pause Overlay */}
-        {showControls && (
-          <TouchableOpacity 
+        {showControls && !isPlaying && (
+          <TouchableOpacity
             style={styles.playOverlay}
             onPress={togglePlayback}
             activeOpacity={1}
           >
-            {!isPlaying && <Ionicons name="play-circle" size={80} color="#FFFFFF" />}
-            {isPlaying && <Ionicons name="pause-circle" size={80} color="rgba(255, 255, 255, 0.8)" />}
+            <Ionicons name="play-circle" size={80} color="#FFFFFF" />
           </TouchableOpacity>
         )}
       </TouchableOpacity>
 
       {/* Info Overlay */}
-      {!showComments && showControls && (
-        <Animated.View 
-          style={[
-            styles.infoOverlay,
-            { opacity: controlsOpacity }
-          ]}
+      {!showComments && !showChat && showControls && (
+        <Animated.View
+          style={[styles.infoOverlay, { opacity: controlsOpacity }]}
         >
-          <Text style={styles.title}>{hotTake.title}</Text>
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>{hotTake.title}</Text>
+            {trendingLabel && (
+              <TrendingBadge label={trendingLabel} />
+            )}
+          </View>
           <Text style={styles.meta}>
             @{hotTake.author.username} • {hotTake.venueName || 'Unknown Venue'}
           </Text>
+
+          {/* Live Reaction Bar */}
+          <LiveReactionBar
+            takeId={hotTake.id}
+            gameId={hotTake.id}
+            onReact={handleReaction}
+            reactionCounts={reactionCounts}
+          />
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
@@ -352,15 +452,35 @@ export default function HotTakeDetailScreen() {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.actionButton}
-              onPress={handleShare}
+              onPress={() => setShowChat(true)}
             >
+              <Ionicons name="people-outline" size={32} color="#FFFFFF" />
+              <Text style={styles.actionText}>Live Chat</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
               <Ionicons name="share-outline" size={32} color="#FFFFFF" />
               <Text style={styles.actionText}>Share</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
+      )}
+
+      {/* Floating Emojis */}
+      <FloatingEmojiContainer emojis={floatingEmojis} />
+
+      {/* Live Chat Room */}
+      {showChat && (
+        <View style={styles.chatOverlay}>
+          <LiveChatRoom
+            gameId={hotTake.id}
+            onSendMessage={handleSendChatMessage}
+            messages={chatMessages}
+            onClose={() => setShowChat(false)}
+          />
+        </View>
       )}
 
       {/* Comments Section */}
@@ -379,22 +499,33 @@ export default function HotTakeDetailScreen() {
           </View>
 
           <ScrollView style={styles.commentsList}>
-            {comments.map((comment) => (
-              <View key={comment.id} style={styles.comment}>
-                <Text style={styles.commentUsername}>
-                  @{comment.author.username}
-                </Text>
-                <Text style={styles.commentContent}>
-                  {comment.body || comment.content}
-                </Text>
-                <Text style={styles.commentDate}>
-                  {new Date(comment.createdAt).toLocaleDateString()}
-                </Text>
+            {comments.length === 0 ? (
+              <View style={styles.emptyComments}>
+                <Ionicons name="chatbubble-outline" size={48} color="#8892A6" />
+                <Text style={styles.emptyText}>No comments yet</Text>
+                <Text style={styles.emptySubtext}>Be the first to comment!</Text>
               </View>
-            ))}
+            ) : (
+              comments.map((comment) => (
+                <View key={comment.id} style={styles.comment}>
+                  <View style={styles.commentAvatar}>
+                    <Ionicons name="person" size={16} color="#00FF9F" />
+                  </View>
+                  <View style={styles.commentContent}>
+                    <Text style={styles.commentUsername}>
+                      @{comment.author.username}
+                    </Text>
+                    <Text style={styles.commentText}>{comment.body}</Text>
+                    <Text style={styles.commentDate}>
+                      {new Date(comment.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )}
           </ScrollView>
 
-          <View style={styles.commentInput}>
+          <View style={styles.commentInputContainer}>
             <TextInput
               style={styles.input}
               placeholder="Add a comment..."
@@ -402,6 +533,7 @@ export default function HotTakeDetailScreen() {
               value={newComment}
               onChangeText={setNewComment}
               multiline
+              maxLength={500}
             />
             <TouchableOpacity
               style={[
@@ -411,7 +543,11 @@ export default function HotTakeDetailScreen() {
               onPress={handleComment}
               disabled={!newComment.trim() || isSubmitting}
             >
-              <Ionicons name="send" size={20} color="#FFFFFF" />
+              {isSubmitting ? (
+                <Ionicons name="hourglass" size={20} color="#FFFFFF" />
+              ) : (
+                <Ionicons name="send" size={20} color="#FFFFFF" />
+              )}
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -448,28 +584,13 @@ const styles = StyleSheet.create({
   },
   videoControls: {
     position: 'absolute',
-    bottom: 180, // Changed from 100 - moves it higher above the footer
+    bottom: 180,
     left: 0,
     right: 0,
     paddingHorizontal: 20,
   },
-  controlsOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-  playPauseButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 40,
-  },
   progressContainer: {
-    // Removed absolute positioning - now relative to videoControls
+    width: '100%',
   },
   progressBar: {
     width: '100%',
@@ -481,11 +602,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#FF1493',
-  },
-  timeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: '#00FF9F',
   },
   timeText: {
     color: '#FFFFFF',
@@ -496,7 +613,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.1)', // Lighter so you can see video behind
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
   infoOverlay: {
     position: 'absolute',
@@ -504,14 +621,29 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     padding: 20,
-    paddingBottom: 40,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 8,
+    flex: 1,
+  },
+  chatOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '80%',
+    backgroundColor: '#0A0E27',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   meta: {
     fontSize: 14,
@@ -529,13 +661,14 @@ const styles = StyleSheet.create({
   actionText: {
     color: '#FFFFFF',
     fontSize: 12,
+    fontWeight: '600',
   },
   commentsContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: '60%',
+    height: height * 0.6,
     backgroundColor: '#1A1F3A',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -544,7 +677,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#3A4166',
   },
@@ -555,55 +688,83 @@ const styles = StyleSheet.create({
   },
   commentsList: {
     flex: 1,
-    padding: 16,
+    padding: 20,
+  },
+  emptyComments: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#8892A6',
+    marginTop: 8,
   },
   comment: {
-    marginBottom: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2A3154',
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
+  commentAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#0A0E27',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  commentContent: {
+    flex: 1,
   },
   commentUsername: {
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#00FF9F',
     marginBottom: 4,
   },
-  commentContent: {
+  commentText: {
     fontSize: 14,
     color: '#FFFFFF',
+    lineHeight: 20,
     marginBottom: 4,
   },
   commentDate: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#8892A6',
   },
-  commentInput: {
+  commentInputContainer: {
     flexDirection: 'row',
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: '#3A4166',
     alignItems: 'center',
+    gap: 12,
   },
   input: {
     flex: 1,
-    backgroundColor: '#2A3154',
+    backgroundColor: '#0A0E27',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 12,
     color: '#FFFFFF',
-    marginRight: 8,
+    fontSize: 14,
     maxHeight: 100,
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: '#00FF9F',
     justifyContent: 'center',
     alignItems: 'center',
   },
   sendButtonDisabled: {
     backgroundColor: '#3A4166',
+    opacity: 0.5,
   },
 });

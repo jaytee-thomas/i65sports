@@ -11,9 +11,13 @@
       "resizeMode": "contain",
       "backgroundColor": "#0A0E27"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.beechwood.i65sports",
+      "buildNumber": "1.0.0",
       "infoPlist": {
         "NSCameraUsageDescription": "i65Sports needs camera access to record Hot Takes at sporting events.",
         "NSMicrophoneUsageDescription": "i65Sports needs microphone access to record audio for your Hot Takes.",
@@ -26,12 +30,16 @@
         "backgroundColor": "#0A0E27"
       },
       "package": "com.beechwood.i65sports",
+      "versionCode": 1,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION"
       ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       [

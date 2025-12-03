@@ -11,6 +11,8 @@ model User {
   id        String     @id @default(cuid())
   email     String     @unique
   username  String     @unique
+  bio       String?
+  avatarUrl String?
   role      Role       @default(USER)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt @default(now())
@@ -22,6 +24,13 @@ model User {
   // Follow relationships
   following Follow[] @relation("UserFollows")
   followers Follow[] @relation("UserFollowers")
+  
+  // Notification relationships
+  notifications       Notification[] @relation("UserNotifications")
+  triggeredNotifications Notification[] @relation("ActorNotifications")
+  
+  // Check-in relationships
+  checkIns     CheckIn[]
 }
 
 model HotTake {
@@ -57,6 +66,7 @@ model HotTake {
   author    User       @relation(fields: [authorId], references: [id])
   game      Game?      @relation(fields: [gameId], references: [id])
   reactions Reaction[]
+  notifications Notification[]
   
   // Indexes for performance
   @@index([createdAt])
@@ -132,6 +142,7 @@ model Venue {
 
   @@unique([name, city])
   @@index([latitude, longitude])
+  checkIns     CheckIn[]
   @@map("venues")
 }
 
@@ -152,6 +163,47 @@ enum TakeStatus {
   PUBLISHED
   FLAGGED
   REMOVED
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String   // User who receives the notification
+  actorId     String   // User who triggered the notification
+  type        NotificationType
+  hotTakeId   String?  // Related Hot Take (for likes, comments)
+  commentId   String?  // Related Comment (for comment notifications)
+  message     String
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  user        User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  actor       User     @relation("ActorNotifications", fields: [actorId], references: [id], onDelete: Cascade)
+  hotTake     HotTake? @relation(fields: [hotTakeId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, createdAt])
+  @@index([userId, read])
+}
+
+enum NotificationType {
+  LIKE
+  COMMENT
+  FOLLOW
+  MENTION
+}
+
+model CheckIn {
+  id           String    @id @default(cuid())
+  userId       String
+  venueId      String
+  checkedInAt  DateTime  @default(now())
+  checkedOutAt DateTime?
+  
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@index([venueId, checkedInAt])
+  @@index([userId, checkedInAt])
+  @@map("check_ins")
 }
 
 // REMOVED: Article, FanReel, Reply, RecordingDraft models

@@ -16,6 +16,7 @@ import { useUser, useAuth } from '@clerk/clerk-expo';
 import { ProfileGridSkeleton, Skeleton } from '../components/SkeletonLoader';
 import { handleApiError } from '../utils/errorHandler';
 import FollowButton from '../components/FollowButton';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Toast from 'react-native-toast-message';
 
@@ -51,6 +52,7 @@ export default function ProfileScreen() {
   const { signOut, getToken } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -59,62 +61,45 @@ export default function ProfileScreen() {
   }, [user]);
 
   const loadProfile = async () => {
+    const userId = user?.id;
+    
+    if (!userId) {
+      console.log('No userId available');
+      return;
+    }
+
     try {
       setLoading(true);
+      setError(null);
       
-      // Fetch all hot takes with timeout
-      const hotTakesResponse = await axios.get(`${API_URL}/hot-takes?limit=50`, {
-        timeout: 15000
-      });
+      const token = await getToken();
       
-      // Filter to only show current user's hot takes
-      const userHotTakes = hotTakesResponse.data.hotTakes.filter(
-        (ht: any) => ht.author.email === user?.emailAddresses[0].emailAddress
-      );
-
-      // Get follow counts
-      let followersCount = 0;
-      let followingCount = 0;
-      if (userHotTakes.length > 0) {
-        const userId = userHotTakes[0].author.id;
-        
-        try {
-          const followersResponse = await axios.get(
-            `${API_URL}/users/${userId}/follows?type=followers`,
-            { timeout: 10000 }
-          );
-          const followingResponse = await axios.get(
-            `${API_URL}/users/${userId}/follows?type=following`,
-            { timeout: 10000 }
-          );
-          
-          followersCount = followersResponse.data.followers?.length || 0;
-          followingCount = followingResponse.data.following?.length || 0;
-        } catch (error) {
-          console.error('Error fetching follow counts:', error);
-        }
+      if (!token) {
+        console.error('No auth token available');
+        setError('Authentication required');
+        return;
       }
 
-      setProfile({
-        id: user?.id || '',
-        username: user?.username || user?.emailAddresses[0].emailAddress.split('@')[0] || 'user',
-        email: user?.emailAddresses[0].emailAddress || '',
-        hotTakes: userHotTakes,
-        followersCount,
-        followingCount,
+      console.log('Loading profile for userId:', userId);
+
+      const response = await axios.get(`${API_URL}/users/${userId}`, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+        },
+        timeout: 10000,
       });
-    } catch (error) {
-      console.error('Error loading profile:', error);
-      handleApiError(error, 'Loading Profile');
+
+      console.log('Profile loaded:', response.data);
+      setProfile(response.data);
+    } catch (err: any) {
+      console.error('Error loading profile:', err.response?.status, err.response?.data);
       
-      setProfile({
-        id: user?.id || '',
-        username: user?.username || 'user',
-        email: user?.emailAddresses[0].emailAddress || '',
-        hotTakes: [],
-        followersCount: 0,
-        followingCount: 0,
-      });
+      if (err.response?.status === 401) {
+        setError('Please sign in again');
+      } else {
+        handleApiError(err, 'Loading Profile');
+        setError('Failed to load profile');
+      }
     } finally {
       setLoading(false);
     }
@@ -248,6 +233,25 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
+      {/* TEST: Logout & Reset Onboarding Button */}
+      <TouchableOpacity
+        style={{
+          backgroundColor: '#FF6B6B',
+          padding: 12,
+          borderRadius: 8,
+          margin: 16,
+        }}
+        onPress={async () => {
+          await AsyncStorage.removeItem('hasSeenOnboarding');
+          await signOut();
+          Alert.alert('Logged out!', 'Restart app to see onboarding.');
+        }}
+      >
+        <Text style={{ color: '#FFFFFF', textAlign: 'center', fontWeight: 'bold' }}>
+          TEST: Logout & Reset Onboarding
+        </Text>
+      </TouchableOpacity>
+
       {/* Profile Header */}
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
@@ -271,17 +275,30 @@ export default function ProfileScreen() {
         </View>
         <Text style={styles.username}>@{profile?.username}</Text>
         <Text style={styles.bio}>🏀 Sports fanatic | 🎥 Hot Takes creator</Text>
-        {/* Follow Button or Sign Out */}
+        {/* Action Buttons */}
         {user?.emailAddresses[0].emailAddress === profile?.email ? (
-          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-            <Text style={styles.signOutButtonText}>Sign Out</Text>
-          </TouchableOpacity>
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => navigation.navigate('EditProfile' as never)}
+            >
+              <Ionicons name="create-outline" size={18} color="#00FF9F" />
+              <Text style={styles.editButtonText}>Edit Profile</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => navigation.navigate('Settings' as never)}
+            >
+              <Ionicons name="settings-outline" size={18} color="#00FF9F" />
+              <Text style={styles.settingsButtonText}>Settings</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <FollowButton 
             userId={profile?.id || ''} 
             username={profile?.username || ''}
             onFollowChange={(following) => {
-              // Could update follower count here if needed
               console.log('Follow status changed:', following);
             }}
           />
@@ -381,16 +398,43 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
   },
-  signOutButton: {
+  buttonContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     borderWidth: 1,
-    borderColor: '#FF6B6B',
+    borderColor: '#00FF9F',
     borderRadius: 8,
     paddingVertical: 8,
-    paddingHorizontal: 16,
-    alignSelf: 'center',
+    paddingHorizontal: 20,
+    flex: 1,
+    justifyContent: 'center',
   },
-  signOutButtonText: {
-    color: '#FF6B6B',
+  editButtonText: {
+    color: '#00FF9F',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  settingsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#00FF9F',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    flex: 1,
+    justifyContent: 'center',
+  },
+  settingsButtonText: {
+    color: '#00FF9F',
     fontSize: 14,
     fontWeight: '600',
   },

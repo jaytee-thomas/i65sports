@@ -1,367 +1,409 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
-  ActivityIndicator,
-  Image,
   TextInput,
-  ScrollView,
-  Alert,
-  Animated,
   FlatList,
+  Image,
+  SafeAreaView,
+  ActivityIndicator,
   RefreshControl,
+  ScrollView,
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useUser, useAuth } from '@clerk/clerk-expo';
-import { HotTakeCardSkeleton } from '../components/SkeletonLoader';
-import { handleApiError } from '../utils/errorHandler';
-import OddsTicker from '../components/OddsTicker';
+import { useAuth } from '@clerk/clerk-expo';
 import axios from 'axios';
+import OddsTicker from '../components/OddsTicker';
+import { HotTakeCardSkeleton } from '../components/SkeletonLoader';
 import Toast from 'react-native-toast-message';
+import { TrendingBadge } from '../components/TrendingBadge';
+import { useTrendingDetection } from '../hooks/useTrendingDetection';
 
-const { width } = Dimensions.get('window');
+// Haptics utility
+const haptics = {
+  light: () => {},
+  medium: () => {},
+  error: () => {},
+};
 
-// Create AnimatedFlatList for native driver support
-const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<HotTake>);
+// Error handler
+const handleApiError = (error: any, context: string) => {
+  console.error(`${context}:`, error);
+};
 
 const API_URL = 'http://192.168.86.226:3000/api';
-
-const SPORTS = [
-  { id: 'all', name: 'All', icon: 'apps' },
-  { id: 'basketball', name: 'Basketball', icon: 'basketball' },
-  { id: 'football', name: 'Football', icon: 'football' },
-  { id: 'baseball', name: 'Baseball', icon: 'baseball' },
-  { id: 'hockey', name: 'Hockey', icon: 'disc' },
-  { id: 'soccer', name: 'Soccer', icon: 'football-outline' },
-];
 
 interface HotTake {
   id: string;
   title: string;
   videoUrl: string;
-  thumbUrl: string | null;
-  venueName: string | null;
-  createdAt: string;
-  sport?: string | null;
+  thumbnailUrl?: string;
+  thumbUrl?: string;
+  sport: string;
   author: {
+    id: string;
     username: string;
     email: string;
+    avatarUrl?: string;
   };
+  _count: {
+    reactions: number;
+    comments: number;
+  };
+  createdAt: string;
 }
+
+interface Game {
+  id: string;
+  league: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeOdds: number;
+  awayOdds: number;
+  startTime: string;
+}
+
+const sports = [
+  { id: 'all', name: 'All', icon: '🏆' },
+  { id: 'NBA', name: 'NBA', icon: '🏀' },
+  { id: 'NFL', name: 'NFL', icon: '🏈' },
+  { id: 'MLB', name: 'MLB', icon: '⚾' },
+  { id: 'NHL', name: 'NHL', icon: '🏒' },
+  { id: 'Soccer', name: 'Soccer', icon: '⚽' },
+  { id: 'NCAA', name: 'NCAA', icon: '🎓' },
+];
 
 export default function HomeScreen() {
   const navigation = useNavigation();
-  const { user } = useUser();
-  const { getToken } = useAuth();
+  const { userId, getToken } = useAuth();
+
+  // State
   const [hotTakes, setHotTakes] = useState<HotTake[]>([]);
-  const [filteredHotTakes, setFilteredHotTakes] = useState<HotTake[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
-  const [selectedSport, setSelectedSport] = useState<string | null>(null);
+  const [games, setGames] = useState<Game[]>([]);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSport, setSelectedSport] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Fade effect for header
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 150],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  // Trending detection
+  const trendingTakes = useTrendingDetection(hotTakes);
 
-  useEffect(() => {
-    fetchHotTakes();
-  }, []);
+  // Fetch Hot Takes
+  const fetchHotTakes = async (refresh = false) => {
+    if (loading || loadingMore) return;
 
-  useEffect(() => {
-    handleSearch(searchQuery);
-  }, [searchQuery, hotTakes, selectedSport]);
-
-  const fetchHotTakes = async (cursor?: string | null) => {
     try {
-      if (cursor) {
-        setLoadingMore(true);
-      } else {
-        setLoading(true);
-      }
+      refresh ? setLoading(true) : setLoadingMore(true);
+      setError(null);
 
-      console.log('Fetching Hot Takes from:', `${API_URL}/hot-takes`);
-      
-      const params: any = { limit: 20 };
-      if (cursor) {
+      const token = await getToken();
+      const params: any = {
+        limit: 20,
+      };
+
+      if (!refresh && cursor) {
         params.cursor = cursor;
       }
 
-      const response = await axios.get(`${API_URL}/hot-takes`, { 
-        params,
-        timeout: 15000 // 15 second timeout
-      });
-      
-      console.log('Hot Takes loaded:', response.data.hotTakes.length);
-      
-      if (cursor) {
-        setHotTakes(prev => [...prev, ...response.data.hotTakes]);
-      } else {
-        setHotTakes(response.data.hotTakes);
+      if (selectedSport && selectedSport !== 'all') {
+        params.sport = selectedSport;
       }
-      
-      setNextCursor(response.data.nextCursor);
+
+      console.log('📡 Fetching Hot Takes:', params);
+
+      const response = await axios.get(`${API_URL}/hot-takes`, {
+        params,
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000,
+      });
+
+      console.log('✅ Hot Takes loaded:', response.data.hotTakes.length);
+
+      if (refresh || !cursor) {
+        setHotTakes(response.data.hotTakes || []);
+      } else {
+        setHotTakes((prev) => [...prev, ...(response.data.hotTakes || [])]);
+      }
+
+      setCursor(response.data.nextCursor);
       setHasMore(!!response.data.nextCursor);
       setError(null);
     } catch (err) {
-      console.error('Error fetching Hot Takes:', err);
+      console.error('❌ Error fetching Hot Takes:', err);
       handleApiError(err, 'Loading Hot Takes');
       setError('Failed to load Hot Takes');
     } finally {
       setLoading(false);
       setLoadingMore(false);
+      setRefreshing(false);
     }
   };
 
-  const handleSearch = (query: string, sport?: string | null) => {
-    const activeSport = sport !== undefined ? sport : selectedSport;
-    
-    let filtered = hotTakes;
-    
-    // Filter by sport first
-    if (activeSport && activeSport !== 'all') {
-      filtered = filtered.filter(hotTake => {
-        // Safety check: make sure sport exists and is not null
-        if (!hotTake.sport) return false;
-        return hotTake.sport.toLowerCase() === activeSport.toLowerCase();
-      });
-    }
-    
-    // Then filter by search query
-    if (query.trim()) {
-      const lowerQuery = query.toLowerCase();
-      filtered = filtered.filter(hotTake => {
-        // Safety check each field before calling toLowerCase()
-        const titleMatch = hotTake.title?.toLowerCase().includes(lowerQuery) || false;
-        const usernameMatch = hotTake.author?.username?.toLowerCase().includes(lowerQuery) || false;
-        const venueMatch = hotTake.venueName ? hotTake.venueName.toLowerCase().includes(lowerQuery) : false;
-        
-        return titleMatch || usernameMatch || venueMatch;
-      });
-    }
-    
-    setFilteredHotTakes(filtered);
-    setIsSearching(query.trim().length > 0 || (activeSport !== null && activeSport !== 'all'));
+  // Fetch Games for OddsTicker
+  const fetchGames = async () => {
+    // Mock data until API is ready
+    setGames([
+      {
+        id: '1',
+        league: 'NBA',
+        homeTeam: 'Lakers',
+        awayTeam: 'Warriors',
+        homeOdds: -180,
+        awayOdds: 155,
+        startTime: '7:30 PM',
+      },
+      {
+        id: '2',
+        league: 'NFL',
+        homeTeam: 'Chiefs',
+        awayTeam: 'Raiders',
+        homeOdds: -210,
+        awayOdds: 175,
+        startTime: '8:00 PM',
+      },
+    ]);
   };
 
-  const handleSportFilter = (sportId: string) => {
-    const newSport = sportId === 'all' ? null : sportId;
-    setSelectedSport(newSport);
-    handleSearch(searchQuery, newSport);
-  };
+  // Initial load
+  useEffect(() => {
+    console.log('🏠 HomeScreen mounted');
+    fetchHotTakes(true);
+    fetchGames();
+  }, []);
 
-  const clearSearch = () => {
-    setSearchQuery('');
-    setSelectedSport(null);
-    setIsSearching(false);
-    setFilteredHotTakes(hotTakes);
+  // Refetch when sport changes
+  useEffect(() => {
+    if (selectedSport !== null) {
+      console.log('🏀 Sport changed to:', selectedSport);
+      setCursor(null);
+      setHotTakes([]);
+      fetchHotTakes(true);
+    }
+  }, [selectedSport]);
+
+  // Handlers
+  const handleRefresh = () => {
+    setRefreshing(true);
+    setCursor(null);
+    fetchHotTakes(true);
+    fetchGames();
   };
 
   const handleLoadMore = () => {
-    if (!loadingMore && hasMore && nextCursor && !isSearching) {
-      fetchHotTakes(nextCursor);
+    if (!loadingMore && hasMore && cursor) {
+      fetchHotTakes(false);
     }
   };
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchHotTakes();
-    setRefreshing(false);
+  const handleSportFilter = (sportId: string) => {
+    console.log('🏀 Sport chip tapped:', sportId);
+    haptics.light();
+    setSelectedSport(sportId === 'all' ? null : sportId);
   };
 
-  const handleDeleteHotTake = async (hotTakeId: string) => {
-    Alert.alert(
-      'Delete Hot Take',
-      'Are you sure you want to delete this Hot Take?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const token = await getToken();
-              
-              await axios.delete(`${API_URL}/hot-takes/${hotTakeId}`, {
-                timeout: 10000,
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-              });
-              
-              Toast.show({
-                type: 'success',
-                text1: 'Deleted! 🗑️',
-                position: 'bottom',
-              });
-              
-              // Remove from local state
-              setHotTakes(prev => prev.filter(ht => ht.id !== hotTakeId));
-              setFilteredHotTakes(prev => prev.filter(ht => ht.id !== hotTakeId));
-            } catch (error) {
-              console.error('Error deleting:', error);
-              Toast.show({
-                type: 'error',
-                text1: 'Failed to delete',
-                position: 'bottom',
-              });
-            }
-          },
-        },
-      ]
-    );
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
   };
 
-  const renderHotTake = ({ item }: { item: HotTake }) => {
-    const isMyHotTake = item.author.email === user?.emailAddresses[0].emailAddress;
-    
+  // Filter Hot Takes by search
+  const filteredHotTakes = hotTakes.filter((hotTake) => {
+    if (!searchQuery) return true;
+
+    const searchLower = searchQuery.toLowerCase();
     return (
-      <TouchableOpacity 
+      hotTake.title?.toLowerCase().includes(searchLower) ||
+      hotTake.author.username?.toLowerCase().includes(searchLower) ||
+      hotTake.sport?.toLowerCase().includes(searchLower)
+    );
+  });
+
+  // Render Hot Take Card
+  const renderHotTake = ({ item }: { item: HotTake }) => {
+    const handlePress = () => {
+      console.log('🎬 Hot Take card pressed:', item.title);
+      haptics.light();
+      navigation.navigate('HotTakeDetail' as never, { hotTake: item } as never);
+    };
+
+    const handleLike = async (e: any) => {
+      e.stopPropagation();
+      haptics.medium();
+      try {
+        const token = await getToken();
+        await axios.post(
+          `${API_URL}/hot-takes/${item.id}/reactions`,
+          { type: 'LIKE' },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        setHotTakes((prev) =>
+          prev.map((take) =>
+            take.id === item.id
+              ? {
+                  ...take,
+                  _count: {
+                    ...take._count,
+                    reactions: take._count.reactions + 1,
+                  },
+                }
+              : take
+          )
+        );
+
+        Toast.show({
+          type: 'success',
+          text1: 'Liked!',
+          position: 'bottom',
+          visibilityTime: 1000,
+        });
+      } catch (error) {
+        console.error('Error liking:', error);
+        haptics.error();
+      }
+    };
+
+    return (
+      <TouchableOpacity
         style={styles.card}
-        onPress={() => (navigation as any).navigate('HotTakeDetail', { hotTake: item })}
+        onPress={handlePress}
+        activeOpacity={0.9}
       >
-        <View style={styles.videoContainer}>
-          {item.thumbUrl ? (
-            <Image 
-              source={{ uri: item.thumbUrl }} 
-              style={styles.thumbnail}
-              resizeMode="cover"
-            />
-          ) : (
-            <Video
-              source={{ uri: item.videoUrl }}
-              style={styles.video}
-              resizeMode={ResizeMode.COVER}
-              shouldPlay={false}
-              isLooping={false}
-              useNativeControls={false}
-            />
-          )}
-          
-          <View style={styles.playIconOverlay}>
-            <Ionicons name="play-circle" size={48} color="rgba(255, 255, 255, 0.9)" />
-          </View>
+        {/* Thumbnail */}
+        <Image
+          source={{ uri: item.thumbnailUrl || item.thumbUrl || '' }}
+          style={styles.thumbnail}
+          resizeMode="cover"
+        />
+
+        {/* Play Icon Overlay */}
+        <View style={styles.playOverlay} pointerEvents="none">
+          <Ionicons name="play-circle" size={64} color="rgba(255,255,255,0.95)" />
         </View>
-        
-        <View style={styles.cardInfo}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardTitleContainer}>
-              <Text style={styles.cardTitle}>{item.title}</Text>
-              <Text style={styles.cardMeta}>
-                {item.venueName || 'Unknown Venue'} • @{item.author.username}
-              </Text>
-              <Text style={styles.cardDate}>
-                {new Date(item.createdAt).toLocaleDateString()}
-              </Text>
+
+        {/* Content */}
+        <View style={styles.cardContent}>
+          {/* Author Row */}
+          <View style={styles.authorRow}>
+            <View style={styles.avatar}>
+              <Ionicons name="person" size={18} color="#00FF9F" />
             </View>
-            
-            {isMyHotTake && (
-              <TouchableOpacity 
-                style={styles.deleteButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handleDeleteHotTake(item.id);
-                }}
-              >
-                <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-              </TouchableOpacity>
+            <Text style={styles.authorName} numberOfLines={1}>
+              {item.author.username}
+            </Text>
+            {trendingData && (
+              <TrendingBadge
+                label={trendingData.label}
+                velocity={trendingData.velocity}
+              />
             )}
+            {item.sport && (
+              <View style={styles.sportBadge}>
+                <Text style={styles.sportBadgeText}>{item.sport}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Title */}
+          {item.title && (
+            <Text style={styles.cardTitle} numberOfLines={2}>
+              {item.title}
+            </Text>
+          )}
+
+          {/* Stats Row */}
+          <View style={styles.statsRow}>
+            <TouchableOpacity style={styles.statButton} onPress={handleLike}>
+              <Ionicons name="heart-outline" size={22} color="#FFFFFF" />
+              <Text style={styles.statText}>{item._count.reactions}</Text>
+            </TouchableOpacity>
+
+            <View style={styles.statButton}>
+              <Ionicons name="chatbubble-outline" size={22} color="#FFFFFF" />
+              <Text style={styles.statText}>{item._count.comments}</Text>
+            </View>
+
+            <TouchableOpacity style={styles.statButton}>
+              <Ionicons name="share-outline" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
           </View>
         </View>
       </TouchableOpacity>
     );
   };
 
+  // List Header (Search + Sport Chips)
   const renderListHeader = () => (
-    <Animated.View style={{ opacity: headerOpacity }}>
-      {/* Odds Ticker */}
-      <OddsTicker />
-
+    <View>
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <Ionicons 
-          name="search" 
-          size={20} 
-          color="#8892A6" 
-          style={styles.searchIcon}
-        />
+        <Ionicons name="search" size={20} color="#8892A6" />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search by title, user, or venue..."
+          placeholder="Search Hot Takes..."
           placeholderTextColor="#8892A6"
           value={searchQuery}
-          onChangeText={setSearchQuery}
-          autoCapitalize="none"
-          autoCorrect={false}
+          onChangeText={handleSearch}
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
             <Ionicons name="close-circle" size={20} color="#8892A6" />
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Sport Filters */}
-      <ScrollView 
-        horizontal 
+      {/* Sport Filter Chips */}
+      <ScrollView
+        horizontal
         showsHorizontalScrollIndicator={false}
-        style={styles.filtersContainer}
-        contentContainerStyle={styles.filtersContent}
+        style={styles.sportsContainer}
+        contentContainerStyle={styles.sportsContent}
+        scrollEnabled={true}
+        nestedScrollEnabled={true}
       >
-        {SPORTS.map(sport => (
+        {sports.map((sport) => (
           <TouchableOpacity
             key={sport.id}
             style={[
-              styles.filterChip,
-              (selectedSport === sport.id || (sport.id === 'all' && !selectedSport)) && styles.filterChipActive
+              styles.sportChip,
+              (selectedSport === sport.id ||
+                (selectedSport === null && sport.id === 'all')) &&
+                styles.sportChipActive,
             ]}
             onPress={() => handleSportFilter(sport.id)}
+            activeOpacity={0.7}
           >
-            <Ionicons 
-              name={sport.icon as any} 
-              size={16} 
-              color={(selectedSport === sport.id || (sport.id === 'all' && !selectedSport)) ? '#0A0E27' : '#B8C5D6'} 
-            />
-            <Text style={[
-              styles.filterChipText,
-              (selectedSport === sport.id || (sport.id === 'all' && !selectedSport)) && styles.filterChipTextActive
-            ]}>
+            <Text style={styles.sportIcon}>{sport.icon}</Text>
+            <Text
+              style={[
+                styles.sportName,
+                (selectedSport === sport.id ||
+                  (selectedSport === null && sport.id === 'all')) &&
+                  styles.sportNameActive,
+              ]}
+            >
               {sport.name}
             </Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      <Text style={styles.headerSubtitle}>
-        {isSearching ? (
-          `${filteredHotTakes.length} result${filteredHotTakes.length !== 1 ? 's' : ''}`
-        ) : (
-          <>
-            {hotTakes.length} {hotTakes.length === 1 ? 'take' : 'takes'}
-            {hasMore && ' • Scroll for more'}
-          </>
-        )}
+      {/* Hot Takes Count */}
+      <Text style={styles.sectionTitle}>
+        {filteredHotTakes.length} take{filteredHotTakes.length !== 1 ? 's' : ''}
       </Text>
-    </Animated.View>
+    </View>
   );
 
-  const renderFooter = () => {
-    if (!loadingMore || isSearching) return null;
-    
+  // List Footer (Loading More)
+  const renderListFooter = () => {
+    if (!loadingMore) return null;
     return (
       <View style={styles.footerLoader}>
         <ActivityIndicator size="small" color="#00FF9F" />
@@ -370,113 +412,98 @@ export default function HomeScreen() {
     );
   };
 
+  // Empty State
   const renderEmpty = () => {
-    if (isSearching) {
+    if (loading) {
       return (
-        <View style={styles.emptyState}>
-          <Ionicons name="search-outline" size={64} color="#3A4166" />
-          <Text style={styles.emptyText}>No results found</Text>
-          <Text style={styles.emptySubtext}>
-            Try a different search or filter
+        <View>
+          <HotTakeCardSkeleton />
+          <HotTakeCardSkeleton />
+          <HotTakeCardSkeleton />
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={{ padding: 40, alignItems: 'center' }}>
+          <Ionicons name="alert-circle-outline" size={64} color="#8892A6" />
+          <Text style={{ color: '#FFFFFF', fontSize: 18, marginTop: 16, fontWeight: 'bold' }}>
+            Something went wrong
+          </Text>
+          <Text style={{ color: '#8892A6', fontSize: 14, marginTop: 8, textAlign: 'center' }}>
+            {error}
+          </Text>
+          <TouchableOpacity
+            onPress={() => fetchHotTakes(true)}
+            style={{ backgroundColor: '#00FF9F', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, marginTop: 20 }}
+          >
+            <Text style={{ color: '#0A0E27', fontWeight: 'bold' }}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (searchQuery) {
+      return (
+        <View style={{ padding: 40, alignItems: 'center' }}>
+          <Ionicons name="search-outline" size={64} color="#8892A6" />
+          <Text style={{ color: '#FFFFFF', fontSize: 18, marginTop: 16, fontWeight: 'bold' }}>
+            No results found
+          </Text>
+          <Text style={{ color: '#8892A6', fontSize: 14, marginTop: 8 }}>
+            No Hot Takes match "{searchQuery}"
           </Text>
         </View>
       );
     }
 
     return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyText}>No Hot Takes yet!</Text>
-        <Text style={styles.emptySubtext}>
-          Be the first to record one 📹
+      <View style={{ padding: 40, alignItems: 'center' }}>
+        <Ionicons name="videocam-outline" size={64} color="#8892A6" />
+        <Text style={{ color: '#FFFFFF', fontSize: 18, marginTop: 16, fontWeight: 'bold' }}>
+          No Hot Takes yet
         </Text>
+        <Text style={{ color: '#8892A6', fontSize: 14, marginTop: 8 }}>
+          Be the first to share your take!
+        </Text>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Camera' as never)}
+          style={{ backgroundColor: '#00FF9F', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, marginTop: 20 }}
+        >
+          <Text style={{ color: '#0A0E27', fontWeight: 'bold' }}>Record Hot Take</Text>
+        </TouchableOpacity>
       </View>
     );
   };
 
-  const displayedHotTakes = searchQuery.trim() || selectedSport ? filteredHotTakes : hotTakes;
-
-  if (loading && hotTakes.length === 0) {
-    return (
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>TRENDING HOT TAKES 🔥</Text>
-        </View>
-        {/* Skeleton Loading */}
-        <View style={styles.list}>
-          <HotTakeCardSkeleton />
-          <HotTakeCardSkeleton />
-          <HotTakeCardSkeleton />
-        </View>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>😕 {error}</Text>
-        <TouchableOpacity 
-          style={styles.retryButton}
-          onPress={() => fetchHotTakes()}
-        >
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>TRENDING HOT TAKES 🔥</Text>
-      </View>
+    <SafeAreaView style={styles.container}>
+      {/* OddsTicker */}
+      <OddsTicker games={games} />
 
       {/* Hot Takes List */}
-      <AnimatedFlatList
-        data={displayedHotTakes}
+      <FlatList
+        data={filteredHotTakes}
         renderItem={renderHotTake}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        ListHeaderComponent={renderListHeader}
-        ListEmptyComponent={
-          loading ? (
-            <View style={styles.emptyState}>
-              <ActivityIndicator size="large" color="#00FF9F" />
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="videocam-off" size={64} color="#8892A6" />
-              <Text style={styles.emptyText}>No Hot Takes found</Text>
-              <Text style={styles.emptySubtext}>Be the first to record one!</Text>
-            </View>
-          )
-        }
-        ListFooterComponent={
-          loadingMore ? (
-            <View style={styles.footerLoader}>
-              <ActivityIndicator size="small" color="#00FF9F" />
-            </View>
-          ) : null
-        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={onRefresh}
+            onRefresh={handleRefresh}
             tintColor="#00FF9F"
+            colors={['#00FF9F']}
           />
         }
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
-        scrollEventThrottle={16}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        ListHeaderComponent={renderListHeader}
+        ListFooterComponent={renderListFooter}
+        ListEmptyComponent={renderEmpty}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -485,189 +512,150 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0A0E27',
   },
-  centerContainer: {
-    flex: 1,
-    backgroundColor: '#0A0E27',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  header: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3A4166',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 12,
+  list: {
+    paddingBottom: 20,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1A1F3A',
     borderRadius: 12,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#3A4166',
-  },
-  searchIcon: {
-    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    height: 44,
-    color: '#FFFFFF',
+    marginLeft: 8,
     fontSize: 16,
+    color: '#FFFFFF',
   },
-  clearButton: {
-    padding: 4,
-  },
-  filtersContainer: {
+  sportsContainer: {
     marginBottom: 12,
   },
-  filtersContent: {
-    paddingRight: 16,
+  sportsContent: {
+    paddingHorizontal: 16,
+    gap: 8,
   },
-  filterChip: {
+  sportChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
     backgroundColor: '#1A1F3A',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: '#3A4166',
-    marginRight: 8,
+    gap: 6,
   },
-  filterChipActive: {
+  sportChipActive: {
     backgroundColor: '#00FF9F',
     borderColor: '#00FF9F',
   },
-  filterChipText: {
+  sportIcon: {
+    fontSize: 16,
+  },
+  sportName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#B8C5D6',
+    color: '#FFFFFF',
   },
-  filterChipTextActive: {
+  sportNameActive: {
     color: '#0A0E27',
   },
-  headerSubtitle: {
-    fontSize: 14,
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#B8C5D6',
-  },
-  list: {
-    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 12,
   },
   card: {
     backgroundColor: '#1A1F3A',
-    borderRadius: 12,
+    borderRadius: 16,
+    marginHorizontal: 16,
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#3A4166',
     overflow: 'hidden',
-  },
-  videoContainer: {
-    width: '100%',
-    height: 200,
-    backgroundColor: '#2A3154',
-    position: 'relative',
-  },
-  video: {
-    width: '100%',
-    height: '100%',
   },
   thumbnail: {
     width: '100%',
-    height: '100%',
+    height: 320,
+    backgroundColor: '#0A0E27',
   },
-  playIconOverlay: {
-    ...StyleSheet.absoluteFillObject,
+  playOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    backgroundColor: 'rgba(0,0,0,0.25)',
   },
-  cardInfo: {
-    padding: 12,
+  cardContent: {
+    padding: 14,
   },
-  cardHeader: {
+  authorRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    marginBottom: 10,
   },
-  cardTitleContainer: {
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#0A0E27',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  authorName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
     flex: 1,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  deleteButton: {
-    padding: 8,
-    marginLeft: 8,
-  },
-  cardMeta: {
-    fontSize: 12,
-    color: '#B8C5D6',
-    marginBottom: 2,
-  },
-  cardDate: {
-    fontSize: 11,
-    color: '#8892A6',
-  },
-  loadingText: {
-    color: '#B8C5D6',
-    fontSize: 16,
-    marginTop: 12,
-  },
-  errorText: {
-    color: '#FF6B6B',
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
+  sportBadge: {
     backgroundColor: '#00FF9F',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 8,
   },
-  retryButtonText: {
-    color: '#0A0E27',
-    fontSize: 16,
+  sportBadgeText: {
+    fontSize: 11,
     fontWeight: 'bold',
+    color: '#0A0E27',
   },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
-    paddingTop: 80,
-  },
-  emptyText: {
-    fontSize: 20,
+  cardTitle: {
+    fontSize: 17,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 8,
-    marginTop: 16,
+    marginBottom: 12,
+    lineHeight: 22,
   },
-  emptySubtext: {
-    fontSize: 14,
+  statsRow: {
+    flexDirection: 'row',
+    gap: 20,
+  },
+  statButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statText: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#B8C5D6',
-    textAlign: 'center',
   },
   footerLoader: {
     paddingVertical: 20,
     alignItems: 'center',
+    gap: 8,
   },
   footerText: {
-    color: '#B8C5D6',
     fontSize: 14,
-    marginTop: 8,
+    color: '#8892A6',
   },
 });

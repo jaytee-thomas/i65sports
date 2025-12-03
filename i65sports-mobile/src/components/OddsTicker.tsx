@@ -1,250 +1,303 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  ActivityIndicator,
+  Animated,
+  Dimensions,
   TouchableOpacity,
+  ScrollView,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import axios from 'axios';
 
-const API_URL = 'http://192.168.86.226:3000/api';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface Game {
   id: string;
-  sport_title: string;
-  home_team: string;
-  away_team: string;
-  commence_time: string;
-  bookmakers: any[];
+  league: string;
+  time: string;
+  team1: string;
+  team1Odds: string;
+  team2: string;
+  team2Odds: string;
 }
+
+// Sample odds data - replace with real API data later
+const MOCK_GAMES: Game[] = [
+  {
+    id: '1',
+    league: 'NCAAB',
+    time: '6:00 PM',
+    team1: 'Charleston St.',
+    team1Odds: '+1400',
+    team2: 'Cincinnati',
+    team2Odds: '-4000',
+  },
+  {
+    id: '2',
+    league: 'NCAAB',
+    time: '6:00 PM',
+    team1: 'Iona Gaels',
+    team1Odds: '-140',
+    team2: 'Delaware Bl.',
+    team2Odds: '+116',
+  },
+  {
+    id: '3',
+    league: 'NCAAB',
+    time: '6:00 PM',
+    team1: 'North Alabama',
+    team1Odds: '-210',
+    team2: 'Jacksonville',
+    team2Odds: '+175',
+  },
+  {
+    id: '4',
+    league: 'NBA',
+    time: '7:30 PM',
+    team1: 'Lakers',
+    team1Odds: '-180',
+    team2: 'Warriors',
+    team2Odds: '+155',
+  },
+  {
+    id: '5',
+    league: 'NBA',
+    time: '8:00 PM',
+    team1: 'Celtics',
+    team1Odds: '-220',
+    team2: 'Heat',
+    team2Odds: '+190',
+  },
+];
 
 export default function OddsTicker() {
   const navigation = useNavigation();
-  const [games, setGames] = useState<Game[]>([]);
-  const [loading, setLoading] = useState(true);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [isAutoScrolling, setIsAutoScrolling] = useState(true);
+  const [scrollX, setScrollX] = useState(0);
+  const autoScrollInterval = useRef<NodeJS.Timeout | null>(null);
+
+  // Duplicate games for seamless loop
+  const [games] = useState<Game[]>([...MOCK_GAMES, ...MOCK_GAMES, ...MOCK_GAMES]);
 
   useEffect(() => {
-    fetchGames();
-    // Refresh every 5 minutes
-    const interval = setInterval(fetchGames, 300000);
-    return () => clearInterval(interval);
-  }, []);
+    if (isAutoScrolling) {
+      startAutoScroll();
+    } else {
+      stopAutoScroll();
+    }
+    return () => stopAutoScroll();
+  }, [isAutoScrolling]);
 
-  const fetchGames = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/odds`, {
-        timeout: 15000 // 15 second timeout
+  const startAutoScroll = () => {
+    stopAutoScroll(); // Clear any existing interval
+
+    autoScrollInterval.current = setInterval(() => {
+      setScrollX((prev) => {
+        const newPosition = prev + 1;
+        const maxScroll = (games.length * 200) / 2; // Reset at halfway point
+
+        if (scrollViewRef.current) {
+          if (newPosition >= maxScroll) {
+            // Jump back to start for seamless loop
+            scrollViewRef.current.scrollTo({ x: 0, animated: false });
+            return 0;
+          } else {
+            scrollViewRef.current.scrollTo({ x: newPosition, animated: false });
+            return newPosition;
+          }
+        }
+        return prev;
       });
-      setGames(response.data.games.slice(0, 10)); // Top 10 upcoming games
-    } catch (error) {
-      console.error('Error fetching odds:', error);
-      // Silently fail - don't break the app if odds fail
-    } finally {
-      setLoading(false);
+    }, 30); // Adjust speed here (lower = faster)
+  };
+
+  const stopAutoScroll = () => {
+    if (autoScrollInterval.current) {
+      clearInterval(autoScrollInterval.current);
+      autoScrollInterval.current = null;
     }
   };
 
-  const formatTime = (timeString: string) => {
-    const date = new Date(timeString);
-    const now = new Date();
-    const diff = date.getTime() - now.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    
-    if (hours < 24) {
-      return date.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      });
-    }
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric' 
-    });
+  const handleTouchStart = () => {
+    setIsAutoScrolling(false);
   };
 
-  const getMoneyline = (game: Game, team: string) => {
-    if (!game.bookmakers || game.bookmakers.length === 0) return null;
-    
-    const book = game.bookmakers[0]; // Use first bookmaker
-    const h2hMarket = book.markets?.find((m: any) => m.key === 'h2h');
-    const outcome = h2hMarket?.outcomes?.find((o: any) => o.name === team);
-    
-    if (outcome) {
-      return outcome.price > 0 ? `+${outcome.price}` : `${outcome.price}`;
-    }
-    return null;
+  const handleTouchEnd = () => {
+    // Resume auto-scroll after 3 seconds of no interaction
+    setTimeout(() => {
+      setIsAutoScrolling(true);
+    }, 3000);
   };
 
-  if (loading) {
+  const handleCardPress = (game: Game) => {
+    setIsAutoScrolling(false);
+    
+    // Navigate to odds detail screen
+    (navigation as any).navigate('OddsDetail', { game });
+    
+    // Resume auto-scroll after navigation
+    setTimeout(() => {
+      setIsAutoScrolling(true);
+    }, 3000);
+  };
+
+  const renderGameCard = (game: Game, index: number) => {
+    const isPositive1 = game.team1Odds.includes('+');
+    const isPositive2 = game.team2Odds.includes('+');
+
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="small" color="#00FF9F" />
-      </View>
+      <TouchableOpacity
+        key={`${game.id}-${index}`}
+        style={styles.gameCard}
+        onPress={() => handleCardPress(game)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.cardHeader}>
+          <Text style={styles.league}>{game.league}</Text>
+          <Text style={styles.time}>{game.time}</Text>
+        </View>
+        
+        <View style={styles.matchup}>
+          <View style={styles.team}>
+            <Text style={styles.teamName} numberOfLines={1}>
+              {game.team1}
+            </Text>
+            <Text style={styles.at}>@</Text>
+            <Text
+              style={[
+                styles.odds,
+                isPositive1 ? styles.oddsPositive : styles.oddsNegative,
+              ]}
+            >
+              {game.team1Odds}
+            </Text>
+          </View>
+          <View style={styles.team}>
+            <Text style={styles.teamName} numberOfLines={1}>
+              {game.team2}
+            </Text>
+            <Text style={styles.at}>@</Text>
+            <Text
+              style={[
+                styles.odds,
+                isPositive2 ? styles.oddsPositive : styles.oddsNegative,
+              ]}
+            >
+              {game.team2Odds}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
     );
-  }
-
-  if (games.length === 0) {
-    return null;
-  }
+  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Ionicons name="trending-up" size={16} color="#00FF9F" />
-        <Text style={styles.headerText}>LIVE ODDS</Text>
-      </View>
       <ScrollView
+        ref={scrollViewRef}
         horizontal
         showsHorizontalScrollIndicator={false}
+        scrollEnabled={!isAutoScrolling}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onScrollEndDrag={handleTouchEnd}
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
-        {games.map((game) => {
-          const awayOdds = getMoneyline(game, game.away_team);
-          const homeOdds = getMoneyline(game, game.home_team);
-          
-          return (
-            <TouchableOpacity 
-              key={game.id} 
-              style={styles.gameCard}
-              onPress={() => navigation.navigate('OddsDetail' as never, { gameId: game.id } as never)}
-            >
-              <Text style={styles.sportLabel}>{game.sport_title}</Text>
-              <Text style={styles.time}>{formatTime(game.commence_time)}</Text>
-              
-              <View style={styles.matchup}>
-                <View style={styles.teamRow}>
-                  <Text style={styles.teamName} numberOfLines={1}>
-                    {game.away_team}
-                  </Text>
-                  {awayOdds && (
-                    <Text style={[styles.odds, awayOdds.startsWith('+') && styles.oddsPositive]}>
-                      {awayOdds}
-                    </Text>
-                  )}
-                </View>
-                
-                <Text style={styles.vs}>@</Text>
-                
-                <View style={styles.teamRow}>
-                  <Text style={styles.teamName} numberOfLines={1}>
-                    {game.home_team}
-                  </Text>
-                  {homeOdds && (
-                    <Text style={[styles.odds, homeOdds.startsWith('+') && styles.oddsPositive]}>
-                      {homeOdds}
-                    </Text>
-                  )}
-                </View>
-              </View>
-              
-              {/* Add "Tap for more" hint */}
-              <View style={styles.tapHint}>
-                <Ionicons name="chevron-forward" size={12} color="#8892A6" />
-                <Text style={styles.tapHintText}>Tap for all books</Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+        {games.map((game, index) => renderGameCard(game, index))}
       </ScrollView>
+      {/* Scroll Indicator */}
+      {!isAutoScrolling && (
+        <View style={styles.scrollIndicator}>
+          <Text style={styles.scrollIndicatorText}>
+            👆 Swipe to browse • Auto-scroll resumes in 3s
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    height: 100,
+    backgroundColor: '#0A0E27',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1A1F3A',
   },
-  loadingContainer: {
-    height: 120,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  headerText: {
-    color: '#00FF9F',
-    fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 1,
+  scrollView: {
+    flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 12,
-    gap: 12,
+    alignItems: 'center',
+    paddingVertical: 8,
   },
   gameCard: {
+    width: 180,
+    marginHorizontal: 8,
+    padding: 10,
     backgroundColor: '#1A1F3A',
     borderRadius: 12,
-    padding: 12,
-    width: 200,
     borderWidth: 1,
-    borderColor: '#3A4166',
+    borderColor: '#2D3748',
   },
-  sportLabel: {
-    color: '#8892A6',
-    fontSize: 10,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    marginBottom: 4,
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  league: {
+    color: '#00FF9F',
+    fontSize: 12,
+    fontWeight: '700',
   },
   time: {
-    color: '#B8C5D6',
+    color: '#718096',
     fontSize: 11,
-    marginBottom: 8,
   },
   matchup: {
     gap: 4,
   },
-  teamRow: {
+  team: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 4,
   },
   teamName: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     flex: 1,
-    marginRight: 8,
   },
-  vs: {
-    color: '#8892A6',
+  at: {
+    color: '#718096',
     fontSize: 10,
-    textAlign: 'center',
-    marginVertical: 2,
   },
   odds: {
-    color: '#FF6B6B',
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
     minWidth: 45,
     textAlign: 'right',
   },
   oddsPositive: {
     color: '#00FF9F',
   },
-  tapHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#3A4166',
-    gap: 4,
+  oddsNegative: {
+    color: '#FF6B6B',
   },
-  tapHintText: {
-    color: '#8892A6',
+  scrollIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  scrollIndicatorText: {
     fontSize: 10,
+    color: '#8892A6',
   },
 });
-

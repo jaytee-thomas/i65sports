@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { ClerkProvider, ClerkLoaded } from '@clerk/clerk-expo';
 import { tokenCache } from './src/utils/tokenCache';
 import AppNavigator from './src/navigation/AppNavigator';
 import Toast from 'react-native-toast-message';
-import { registerForPushNotificationsAsync } from './src/utils/notifications';
+import { setupNotifications } from './src/utils/notifications';
 import * as Notifications from 'expo-notifications';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
+import socketService from './src/services/socket';
 
 const publishableKey = 'pk_test_d2VsY29tZS1wbGF0eXB1cy03My5jbGVyay5hY2NvdW50cy5kZXYk';
 
@@ -13,17 +16,22 @@ if (!publishableKey) {
 }
 
 export default function App() {
-  const [expoPushToken, setExpoPushToken] = useState<string>('');
-
   useEffect(() => {
-    registerForPushNotificationsAsync().then(token => {
-      if (token) {
-        setExpoPushToken(token);
-        console.log('📱 Expo Push Token:', token);
+    // Connect to WebSocket
+    socketService.connect();
+
+    // Setup notifications
+    setupNotifications().then(enabled => {
+      if (enabled) {
+        console.log('✅ Notifications ready!');
+      } else {
+        console.log('⚠️ Notifications not available');
       }
+    }).catch(error => {
+      console.log('⚠️ Notification setup failed:', error);
     });
 
-    // Listen for notifications
+    // Notification listeners
     const notificationListener = Notifications.addNotificationReceivedListener(notification => {
       console.log('🔔 Notification received:', notification);
     });
@@ -33,17 +41,28 @@ export default function App() {
     });
 
     return () => {
-      Notifications.removeNotificationSubscription(notificationListener);
-      Notifications.removeNotificationSubscription(responseListener);
+      // Disconnect WebSocket
+      socketService.disconnect();
+      
+      if (notificationListener) {
+        notificationListener.remove();
+      }
+      if (responseListener) {
+        responseListener.remove();
+      }
     };
   }, []);
 
   return (
-    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <ClerkLoaded>
-        <AppNavigator />
-        <Toast />
-      </ClerkLoaded>
-    </ClerkProvider>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+          <ClerkLoaded>
+            <AppNavigator />
+            <Toast />
+          </ClerkLoaded>
+        </ClerkProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }

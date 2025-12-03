@@ -1,6 +1,5 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 Notifications.setNotificationHandler({
@@ -11,46 +10,42 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export async function registerForPushNotificationsAsync() {
-  let token;
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#00FF9F',
-    });
+export async function setupNotifications() {
+  if (!Device.isDevice) {
+    console.log('⚠️  Must use physical device for notifications');
+    return false;
   }
 
-  if (Device.isDevice) {
+  try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-    
+
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    
-    if (finalStatus !== 'granted') {
-      console.log('❌ Push notification permission denied');
-      return null;
-    }
-    
-    try {
-      const projectId = Constants.expoConfig?.extra?.eas?.projectId || 'i65sports-demo';
-      
-      token = (await Notifications.getExpoPushTokenAsync({
-        projectId
-      })).data;
-      
-      console.log('✅ Push token:', token);
-    } catch (error) {
-      console.error('Error getting push token:', error);
-    }
-  } else {
-    console.log('⚠️ Must use physical device');
-  }
 
-  return token;
+    if (finalStatus !== 'granted') {
+      console.log('❌ Notification permissions denied');
+      return false;
+    }
+
+    // Skip Expo push token registration for now
+    // This requires proper EAS project setup which we can configure later
+    console.log('✅ Local notifications ready (push tokens disabled for now)');
+
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#00FF9F',
+      });
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error setting up notifications:', error);
+    return false;
+  }
 }

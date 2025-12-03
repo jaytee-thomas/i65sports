@@ -5,9 +5,10 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { useUser } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/clerk-expo';
 import axios from 'axios';
 import Toast from 'react-native-toast-message';
+import { haptics } from '../utils/haptics';
 
 const API_URL = 'http://192.168.86.226:3000/api';
 
@@ -18,7 +19,7 @@ interface FollowButtonProps {
 }
 
 export default function FollowButton({ userId, username, onFollowChange }: FollowButtonProps) {
-  const { user } = useUser();
+  const { getToken } = useAuth();
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -29,7 +30,10 @@ export default function FollowButton({ userId, username, onFollowChange }: Follo
 
   const checkFollowStatus = async () => {
     try {
-      const response = await axios.get(`${API_URL}/follows?userId=${userId}`);
+      const token = await getToken();
+      const response = await axios.get(`${API_URL}/follows?userId=${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setIsFollowing(response.data.isFollowing);
     } catch (error) {
       console.error('Error checking follow status:', error);
@@ -39,36 +43,53 @@ export default function FollowButton({ userId, username, onFollowChange }: Follo
   };
 
   const handleFollow = async () => {
+    haptics.light(); // Add haptic feedback on button press
+    
+    if (actionLoading) return;
+
+    const previousState = isFollowing;
+    setIsFollowing(!isFollowing);
+    setActionLoading(true);
+
     try {
-      setActionLoading(true);
-      if (isFollowing) {
-        // Unfollow
-        await axios.delete(`${API_URL}/follows?followingId=${userId}`);
-        setIsFollowing(false);
-        onFollowChange?.(false);
-        
+      const token = await getToken();
+
+      if (!previousState) {
+        // Following
+        await axios.post(
+          `${API_URL}/follows`,
+          { followingId: userId },
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        haptics.success(); // Add success haptic
+        Toast.show({
+          type: 'success',
+          text1: 'Following!',
+          position: 'bottom',
+          visibilityTime: 1500,
+        });
+        onFollowChange?.(true);
+      } else {
+        // Unfollowing
+        await axios.delete(`${API_URL}/follows?followingId=${userId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        haptics.medium(); // Add medium haptic for unfollow
         Toast.show({
           type: 'info',
           text1: 'Unfollowed',
-          text2: `You unfollowed @${username}`,
           position: 'bottom',
-          visibilityTime: 2000,
+          visibilityTime: 1500,
         });
-      } else {
-        // Follow
-        await axios.post(`${API_URL}/follows`, { followingId: userId });
-        setIsFollowing(true);
-        onFollowChange?.(true);
-        
-        Toast.show({
-          type: 'success',
-          text1: 'Following! 🎉',
-          text2: `You're now following @${username}`,
-          position: 'bottom',
-          visibilityTime: 2000,
-        });
+        onFollowChange?.(false);
       }
     } catch (error: any) {
+      haptics.error(); // Add error haptic
+      // Revert state on error
+      setIsFollowing(previousState);
+      
       console.error('Error toggling follow:', error);
       
       Toast.show({
@@ -140,8 +161,6 @@ const styles = StyleSheet.create({
     minWidth: 90,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#3A4166',
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -157,4 +176,3 @@ const styles = StyleSheet.create({
     color: '#00FF9F',
   },
 });
-

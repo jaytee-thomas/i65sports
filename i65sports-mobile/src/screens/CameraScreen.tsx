@@ -15,6 +15,8 @@ import { useUser, useAuth } from '@clerk/clerk-expo';
 import { useNavigation } from '@react-navigation/native';
 import Toast from 'react-native-toast-message';
 import { uploadHotTake, UploadProgress } from '../services/upload';
+import { haptics } from '../utils/haptics';
+import { VenueDetector } from '../components/VenueDetector';
 
 export default function CameraScreen() {
   const { user } = useUser();
@@ -28,6 +30,7 @@ export default function CameraScreen() {
   const [title, setTitle] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [checkedInVenue, setCheckedInVenue] = useState<{ id: string; name: string } | null>(null);
   
   const cameraRef = useRef<CameraView>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -91,16 +94,47 @@ export default function CameraScreen() {
     }
   };
 
-  const stopRecording = () => {
+  const stopRecording = async () => {
     console.log('Stopping recording...');
     if (cameraRef.current && isRecording) {
-      cameraRef.current.stopRecording();
-      setIsRecording(false);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
+      try {
+        setIsRecording(false);
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+
+        const video = await cameraRef.current.stopRecording();
+        
+        if (video?.uri) {
+          haptics.success();
+          
+          // Navigate to video editor
+          (navigation as any).navigate('VideoEditor', {
+            videoUri: video.uri,
+            onSave: (editedVideo: any) => {
+              // Handle the edited video
+              handleVideoEdited(editedVideo);
+            },
+          });
+        }
+      } catch (error) {
+        console.error('Error stopping recording:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Recording Error',
+          text2: 'Failed to stop recording',
+          position: 'bottom',
+        });
       }
     }
+  };
+
+  const handleVideoEdited = (editedVideo: any) => {
+    // Store the edited video URI (for now, using original URI)
+    // In production, you'd process the video with the edits
+    setVideoUri(editedVideo.uri);
+    setShowUploadModal(true);
   };
 
   const handleUpload = async () => {
@@ -124,7 +158,7 @@ export default function CameraScreen() {
       const result = await uploadHotTake(
         videoUri,
         title,
-        'Unknown Venue',
+        checkedInVenue?.name || 'Unknown Venue',
         (progress: UploadProgress) => {
           setUploadProgress(progress.percentage);
         },
@@ -174,6 +208,15 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Venue Detection Banner */}
+      <VenueDetector
+        onCheckInSuccess={(venue) => {
+          console.log('✅ Checked in at:', venue.name);
+          setCheckedInVenue({ id: venue.id, name: venue.name });
+          // You can store this venue ID to tag the Hot Take
+        }}
+      />
+
       {/* Back Button */}
       <TouchableOpacity 
         style={styles.backButton}

@@ -1,18 +1,25 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@clerk/clerk-expo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Screens
 import HomeScreen from '../screens/HomeScreen';
 import CameraScreen from '../screens/CameraScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import EditProfileScreen from '../screens/EditProfileScreen';
 import HotTakeDetailScreen from '../screens/HotTakeDetailScreen';
 import OddsDetailScreen from '../screens/OddsDetailScreen';
+import VideoEditorScreen from '../screens/VideoEditorScreen';
+import OnboardingScreen from '../screens/OnboardingScreen';
 import SignInScreen from '../screens/SignInScreen';
 import SignUpScreen from '../screens/SignUpScreen';
+import LiveGameScreen from '../screens/LiveGameScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -28,6 +35,8 @@ function MainTabs() {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Camera') {
             iconName = focused ? 'camera' : 'camera-outline';
+          } else if (route.name === 'Notifications') {
+            iconName = focused ? 'notifications' : 'notifications-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           } else {
@@ -74,6 +83,13 @@ function MainTabs() {
           tabBarStyle: { display: 'none' },
         }}
       />
+      <Tab.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -81,9 +97,24 @@ function MainTabs() {
 
 export default function AppNavigator() {
   const { isSignedIn, isLoaded } = useAuth();
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
 
-  // Wait for auth to load
-  if (!isLoaded) {
+  useEffect(() => {
+    checkOnboarding();
+  }, []);
+
+  const checkOnboarding = async () => {
+    try {
+      const value = await AsyncStorage.getItem('hasSeenOnboarding');
+      setHasSeenOnboarding(value === 'true');
+    } catch (error) {
+      console.error('Error checking onboarding:', error);
+      setHasSeenOnboarding(false);
+    }
+  };
+
+  // Wait for auth and onboarding check to load
+  if (!isLoaded || hasSeenOnboarding === null) {
     return null;
   }
 
@@ -124,10 +155,46 @@ export default function AppNavigator() {
                 headerBackTitle: 'Back',
               }}
             />
+            <Stack.Screen 
+              name="EditProfile" 
+              component={EditProfileScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen 
+              name="Settings" 
+              component={SettingsScreen}
+              options={{
+                headerShown: true,
+                headerStyle: { backgroundColor: '#0A0E27' },
+                headerTintColor: '#FFFFFF',
+                headerTitle: 'Settings',
+                headerBackTitle: 'Back',
+              }}
+            />
+            <Stack.Screen 
+              name="VideoEditor" 
+              component={VideoEditorScreen}
+              options={{
+                headerShown: false,
+                presentation: 'modal',
+              }}
+            />
+            <Stack.Screen
+              name="LiveGame"
+              component={LiveGameScreen}
+              options={{ headerShown: false }}
+            />
           </>
         ) : (
           // Unauthenticated routes
           <>
+            {!hasSeenOnboarding && (
+              <Stack.Screen 
+                name="Onboarding" 
+                component={OnboardingScreen}
+                options={{ headerShown: false }}
+              />
+            )}
             <Stack.Screen name="SignIn" component={SignInScreen} />
             <Stack.Screen name="SignUp" component={SignUpScreen} />
           </>
@@ -136,4 +203,3 @@ export default function AppNavigator() {
     </NavigationContainer>
   );
 }
-

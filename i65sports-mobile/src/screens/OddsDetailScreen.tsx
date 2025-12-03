@@ -1,43 +1,23 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
   Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import axios from 'axios';
-
-const API_URL = 'http://192.168.86.226:3000/api';
-
-interface Outcome {
-  name: string;
-  price: number;
-  point?: number;
-}
-
-interface Market {
-  key: string;
-  outcomes: Outcome[];
-}
-
-interface Bookmaker {
-  key: string;
-  title: string;
-  markets: Market[];
-}
 
 interface Game {
   id: string;
-  sport_title: string;
-  commence_time: string;
-  home_team: string;
-  away_team: string;
-  bookmakers: Bookmaker[];
+  league: string;
+  time: string;
+  team1: string;
+  team1Odds: string;
+  team2: string;
+  team2Odds: string;
 }
 
 const BOOKMAKER_LINKS: { [key: string]: string } = {
@@ -52,171 +32,115 @@ const BOOKMAKER_LINKS: { [key: string]: string } = {
 export default function OddsDetailScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { gameId } = route.params as { gameId: string };
-  
-  const [game, setGame] = useState<Game | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedMarket, setSelectedMarket] = useState<'h2h' | 'spreads' | 'totals'>('h2h');
-
-  useEffect(() => {
-    fetchGameDetails();
-  }, []);
-
-  const fetchGameDetails = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/odds`);
-      const foundGame = response.data.games.find((g: Game) => g.id === gameId);
-      setGame(foundGame);
-    } catch (error) {
-      console.error('Error fetching game details:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatOdds = (odds: number) => {
-    return odds > 0 ? `+${odds}` : `${odds}`;
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  };
-
-  const openBookmaker = (bookmakerKey: string) => {
-    const url = BOOKMAKER_LINKS[bookmakerKey] || 'https://google.com';
-    Linking.openURL(url);
-  };
-
-  const getMarketOdds = (bookmaker: Bookmaker, team: string) => {
-    const market = bookmaker.markets.find(m => m.key === selectedMarket);
-    if (!market) return null;
-    const outcome = market.outcomes.find(o => o.name === team);
-    return outcome;
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#00FF9F" />
-      </View>
-    );
-  }
+  const { game } = route.params as { game: Game };
 
   if (!game) {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>Game not found</Text>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
+  const openBookmaker = (bookmakerName: string) => {
+    const url = BOOKMAKER_LINKS[bookmakerName.toLowerCase()] || 'https://www.google.com';
+    Linking.openURL(url);
+  };
+
+  const isPositiveOdds = (odds: string) => odds.includes('+');
+
   return (
     <View style={styles.container}>
       <ScrollView>
-        {/* Matchup */}
+        {/* League Badge */}
+        <View style={styles.leagueBadge}>
+          <Text style={styles.leagueText}>{game.league}</Text>
+        </View>
+
+        {/* Matchup Section */}
         <View style={styles.matchupSection}>
-          <Text style={styles.gameTime}>{formatDate(game.commence_time)}</Text>
+          <Text style={styles.gameTime}>{game.time}</Text>
           
-          <View style={styles.teams}>
-            <View style={styles.teamRow}>
-              <Text style={styles.teamName}>{game.away_team}</Text>
-              <Text style={styles.atSymbol}>@</Text>
+          <View style={styles.matchup}>
+            <View style={styles.teamContainer}>
+              <Text style={styles.teamName}>{game.team1}</Text>
+              <View style={[
+                styles.oddsBadge,
+                isPositiveOdds(game.team1Odds) ? styles.oddsBadgePositive : styles.oddsBadgeNegative
+              ]}>
+                <Text style={styles.oddsText}>{game.team1Odds}</Text>
+              </View>
             </View>
-            <View style={styles.teamRow}>
-              <Text style={styles.teamName}>{game.home_team}</Text>
+
+            <Text style={styles.vsText}>VS</Text>
+
+            <View style={styles.teamContainer}>
+              <Text style={styles.teamName}>{game.team2}</Text>
+              <View style={[
+                styles.oddsBadge,
+                isPositiveOdds(game.team2Odds) ? styles.oddsBadgePositive : styles.oddsBadgeNegative
+              ]}>
+                <Text style={styles.oddsText}>{game.team2Odds}</Text>
+              </View>
             </View>
           </View>
         </View>
 
-        {/* Market Selector */}
-        <View style={styles.marketSelector}>
-          <TouchableOpacity
-            style={[styles.marketButton, selectedMarket === 'h2h' && styles.marketButtonActive]}
-            onPress={() => setSelectedMarket('h2h')}
-          >
-            <Text style={[styles.marketButtonText, selectedMarket === 'h2h' && styles.marketButtonTextActive]}>
-              Moneyline
+        {/* Betting Info */}
+        <View style={styles.infoSection}>
+          <View style={styles.infoCard}>
+            <Ionicons name="trophy" size={24} color="#00FF9F" />
+            <Text style={styles.infoTitle}>Moneyline Odds</Text>
+            <Text style={styles.infoText}>
+              Bet on which team will win the game outright
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.marketButton, selectedMarket === 'spreads' && styles.marketButtonActive]}
-            onPress={() => setSelectedMarket('spreads')}
-          >
-            <Text style={[styles.marketButtonText, selectedMarket === 'spreads' && styles.marketButtonTextActive]}>
-              Spread
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.marketButton, selectedMarket === 'totals' && styles.marketButtonActive]}
-            onPress={() => setSelectedMarket('totals')}
-          >
-            <Text style={[styles.marketButtonText, selectedMarket === 'totals' && styles.marketButtonTextActive]}>
-              Total
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Odds Comparison */}
-        <View style={styles.oddsSection}>
-          <View style={styles.oddsHeader}>
-            <Text style={styles.oddsHeaderText}>Sportsbook</Text>
-            <Text style={styles.oddsHeaderText}>{game.away_team}</Text>
-            <Text style={styles.oddsHeaderText}>{game.home_team}</Text>
           </View>
 
-          {game.bookmakers.map((bookmaker) => {
-            const awayOutcome = getMarketOdds(bookmaker, game.away_team);
-            const homeOutcome = getMarketOdds(bookmaker, game.home_team);
-            if (!awayOutcome || !homeOutcome) return null;
-
-            return (
-              <TouchableOpacity
-                key={bookmaker.key}
-                style={styles.oddsRow}
-                onPress={() => openBookmaker(bookmaker.key)}
-              >
-                <View style={styles.bookmakerCell}>
-                  <Text style={styles.bookmakerName}>{bookmaker.title}</Text>
-                </View>
-                
-                <View style={styles.oddsCell}>
-                  {selectedMarket === 'spreads' && awayOutcome.point !== undefined && (
-                    <Text style={styles.pointSpread}>
-                      {awayOutcome.point > 0 ? '+' : ''}{awayOutcome.point}
-                    </Text>
-                  )}
-                  <Text style={[styles.oddsValue, awayOutcome.price > 0 && styles.oddsPositive]}>
-                    {formatOdds(awayOutcome.price)}
-                  </Text>
-                </View>
-
-                <View style={styles.oddsCell}>
-                  {selectedMarket === 'spreads' && homeOutcome.point !== undefined && (
-                    <Text style={styles.pointSpread}>
-                      {homeOutcome.point > 0 ? '+' : ''}{homeOutcome.point}
-                    </Text>
-                  )}
-                  <Text style={[styles.oddsValue, homeOutcome.price > 0 && styles.oddsPositive]}>
-                    {formatOdds(homeOutcome.price)}
-                  </Text>
-                </View>
-
-                <Ionicons name="chevron-forward" size={20} color="#8892A6" />
-              </TouchableOpacity>
-            );
-          })}
+          <View style={styles.infoCard}>
+            <Ionicons name="information-circle" size={24} color="#00A8E8" />
+            <Text style={styles.infoTitle}>How to Read Odds</Text>
+            <Text style={styles.infoText}>
+              <Text style={{ color: '#00FF9F' }}>+ (Positive)</Text>: Amount you win on $100 bet{'\n'}
+              <Text style={{ color: '#FF6B6B' }}>- (Negative)</Text>: Amount to bet to win $100
+            </Text>
+          </View>
         </View>
 
-        <Text style={styles.disclaimer}>
-          Tap any sportsbook to place your bet. Must be 21+ and in eligible states.
-        </Text>
+        {/* Sportsbooks */}
+        <View style={styles.bookmakerSection}>
+          <Text style={styles.sectionTitle}>Place Your Bet</Text>
+          <Text style={styles.sectionSubtitle}>Tap any sportsbook to get started</Text>
+
+          {Object.entries(BOOKMAKER_LINKS).map(([key, url]) => (
+            <TouchableOpacity
+              key={key}
+              style={styles.bookmakerCard}
+              onPress={() => openBookmaker(key)}
+            >
+              <View style={styles.bookmakerInfo}>
+                <Ionicons name="basketball" size={24} color="#00FF9F" />
+                <Text style={styles.bookmakerName}>
+                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color="#8892A6" />
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Disclaimer */}
+        <View style={styles.disclaimerSection}>
+          <Ionicons name="alert-circle" size={20} color="#FFB800" />
+          <Text style={styles.disclaimer}>
+            Must be 21+ to bet. Gambling problem? Call 1-800-GAMBLER. Only available in eligible states.
+          </Text>
+        </View>
       </ScrollView>
     </View>
   );
@@ -227,35 +151,41 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0A0E27',
   },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: '#0A0E27',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   errorContainer: {
     flex: 1,
     backgroundColor: '#0A0E27',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 40,
   },
   errorText: {
     color: '#FF6B6B',
-    fontSize: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3A4166',
+    fontSize: 18,
+    marginBottom: 20,
+    textAlign: 'center',
   },
   backButton: {
-    marginRight: 16,
+    backgroundColor: '#00FF9F',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
   },
-  sportLabel: {
-    color: '#00FF9F',
+  backButtonText: {
+    color: '#0A0E27',
     fontSize: 16,
+    fontWeight: 'bold',
+  },
+  leagueBadge: {
+    alignSelf: 'center',
+    backgroundColor: '#00FF9F',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginTop: 20,
+  },
+  leagueText: {
+    color: '#0A0E27',
+    fontSize: 14,
     fontWeight: 'bold',
     textTransform: 'uppercase',
   },
@@ -265,118 +195,128 @@ const styles = StyleSheet.create({
   },
   gameTime: {
     color: '#B8C5D6',
-    fontSize: 14,
-    marginBottom: 20,
+    fontSize: 16,
+    marginBottom: 24,
+    fontWeight: '600',
   },
-  teams: {
+  matchup: {
     width: '100%',
+    gap: 20,
   },
-  teamRow: {
+  teamContainer: {
+    backgroundColor: '#1A1F3A',
+    padding: 20,
+    borderRadius: 12,
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#3A4166',
   },
   teamName: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 20,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  oddsBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  oddsBadgePositive: {
+    backgroundColor: 'rgba(0, 255, 159, 0.2)',
+  },
+  oddsBadgeNegative: {
+    backgroundColor: 'rgba(255, 107, 107, 0.2)',
+  },
+  oddsText: {
+    color: '#FFFFFF',
+    fontSize: 18,
     fontWeight: 'bold',
   },
-  atSymbol: {
+  vsText: {
     color: '#8892A6',
-    fontSize: 18,
-    marginHorizontal: 12,
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
-  marketSelector: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
+  infoSection: {
+    paddingHorizontal: 20,
+    gap: 12,
     marginBottom: 20,
-    gap: 8,
   },
-  marketButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+  infoCard: {
     backgroundColor: '#1A1F3A',
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#3A4166',
-    alignItems: 'center',
   },
-  marketButtonActive: {
-    backgroundColor: '#00FF9F',
-    borderColor: '#00FF9F',
+  infoTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 8,
+    marginBottom: 4,
   },
-  marketButtonText: {
+  infoText: {
     color: '#B8C5D6',
     fontSize: 14,
-    fontWeight: '600',
+    lineHeight: 20,
   },
-  marketButtonTextActive: {
-    color: '#0A0E27',
-    fontWeight: 'bold',
-  },
-  oddsSection: {
-    paddingHorizontal: 16,
+  bookmakerSection: {
+    paddingHorizontal: 20,
     marginBottom: 20,
   },
-  oddsHeader: {
-    flexDirection: 'row',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3A4166',
-    marginBottom: 8,
+  sectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
   },
-  oddsHeaderText: {
-    flex: 1,
+  sectionSubtitle: {
     color: '#8892A6',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
+    fontSize: 14,
+    marginBottom: 16,
   },
-  oddsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
+  bookmakerCard: {
     backgroundColor: '#1A1F3A',
-    borderRadius: 8,
-    marginBottom: 8,
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#3A4166',
   },
-  bookmakerCell: {
-    flex: 1,
+  bookmakerInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   bookmakerName: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
   },
-  oddsCell: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  pointSpread: {
-    color: '#B8C5D6',
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  oddsValue: {
-    color: '#FF6B6B',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  oddsPositive: {
-    color: '#00FF9F',
+  disclaimerSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    backgroundColor: 'rgba(255, 184, 0, 0.1)',
+    padding: 16,
+    marginHorizontal: 20,
+    marginBottom: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 184, 0, 0.3)',
   },
   disclaimer: {
-    color: '#8892A6',
-    fontSize: 11,
-    textAlign: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    lineHeight: 16,
+    flex: 1,
+    color: '#FFB800',
+    fontSize: 12,
+    lineHeight: 18,
   },
 });
-
