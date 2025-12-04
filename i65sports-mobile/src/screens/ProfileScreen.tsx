@@ -277,23 +277,37 @@ export default function ProfileScreen() {
         <Text style={styles.bio}>🏀 Sports fanatic | 🎥 Hot Takes creator</Text>
         {/* Action Buttons */}
         {user?.emailAddresses[0].emailAddress === profile?.email ? (
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              style={styles.editButton}
-              onPress={() => navigation.navigate('EditProfile' as never)}
-            >
-              <Ionicons name="create-outline" size={18} color="#00FF9F" />
-              <Text style={styles.editButtonText}>Edit Profile</Text>
-            </TouchableOpacity>
+          <>
+            <View style={styles.buttonContainer}>
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={() => navigation.navigate('EditProfile' as never)}
+              >
+                <Ionicons name="create-outline" size={18} color="#00FF9F" />
+                <Text style={styles.editButtonText}>Edit Profile</Text>
+              </TouchableOpacity>
 
+              <TouchableOpacity
+                style={styles.settingsButton}
+                onPress={() => navigation.navigate('Settings' as never)}
+              >
+                <Ionicons name="settings-outline" size={18} color="#00FF9F" />
+                <Text style={styles.settingsButtonText}>Settings</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {/* My Drafts Menu Item */}
             <TouchableOpacity
-              style={styles.settingsButton}
-              onPress={() => navigation.navigate('Settings' as never)}
+              style={styles.menuItem}
+              onPress={() => navigation.navigate('Drafts' as never)}
             >
-              <Ionicons name="settings-outline" size={18} color="#00FF9F" />
-              <Text style={styles.settingsButtonText}>Settings</Text>
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="document-text-outline" size={24} color="#00FF9F" />
+                <Text style={styles.menuItemText}>My Drafts</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#8892A6" />
             </TouchableOpacity>
-          </View>
+          </>
         ) : (
           <FollowButton 
             userId={profile?.id || ''} 
@@ -563,5 +577,25 @@ const styles = StyleSheet.create({
     color: '#B8C5D6',
     fontSize: 14,
     textAlign: 'center',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1A1F3A',
+    backgroundColor: '#0A0E27',
+  },
+  menuItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  menuItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#FFFFFF',
   },
 });

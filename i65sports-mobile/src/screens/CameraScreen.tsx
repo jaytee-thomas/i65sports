@@ -83,10 +83,11 @@ export default function CameraScreen() {
         });
         
         console.log('✅ Video recorded successfully!', video.uri);
-        setVideoUri(video.uri);
-        setShowUploadModal(true);
         
-        console.log('Modal should be showing now...');
+        // Navigate to UploadHotTakeScreen
+        (navigation as any).navigate('UploadHotTake', {
+          videoUri: video.uri,
+        });
       } catch (error) {
         console.error('❌ Recording error:', error);
         Alert.alert('Recording Error', String(error));
@@ -134,10 +135,11 @@ export default function CameraScreen() {
   };
 
   const handleVideoEdited = (editedVideoUri: string, metadata: any) => {
-    // Store the edited video URI and metadata
-    setVideoUri(editedVideoUri);
-    setEditMetadata(metadata);
-    setShowUploadModal(true);
+    // Navigate to UploadHotTakeScreen instead of showing modal
+    (navigation as any).navigate('UploadHotTake', {
+      videoUri: editedVideoUri,
+      editMetadata: metadata,
+    });
   };
 
   const formatTime = (seconds: number) => {

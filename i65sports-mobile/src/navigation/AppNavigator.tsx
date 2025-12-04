@@ -27,6 +27,8 @@ import SelectRecipientsScreen from '../screens/SelectRecipientsScreen';
 import CollectionsScreen from '../screens/CollectionsScreen';
 import CollectionDetailScreen from '../screens/CollectionDetailScreen';
 import CreateCollectionScreen from '../screens/CreateCollectionScreen';
+import UploadHotTakeScreen from '../screens/UploadHotTakeScreen';
+import DraftsScreen from '../screens/DraftsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -243,6 +245,19 @@ export default function AppNavigator() {
                 presentation: 'modal',
                 headerShown: false,
               }}
+            />
+            <Stack.Screen
+              name="UploadHotTake"
+              component={UploadHotTakeScreen}
+              options={{
+                headerShown: false,
+                presentation: 'modal',
+              }}
+            />
+            <Stack.Screen
+              name="Drafts"
+              component={DraftsScreen}
+              options={{ headerShown: false }}
             />
           </>
         ) : (

@@ -15,7 +15,9 @@ export const uploadHotTake = async (
   title: string,
   venue?: string,
   onProgress?: (progress: UploadProgress) => void,
-  authToken?: string // Add auth token parameter
+  authToken?: string, // Add auth token parameter
+  sport?: string,
+  editMetadata?: any
 ): Promise<any> => {
   try {
     console.log('Starting upload...', videoUri);
@@ -55,6 +57,12 @@ export const uploadHotTake = async (
     formData.append('title', title);
     if (venue) {
       formData.append('venue', venue);
+    }
+    if (sport) {
+      formData.append('sport', sport);
+    }
+    if (editMetadata) {
+      formData.append('editMetadata', JSON.stringify(editMetadata));
     }
 
     console.log('Uploading to:', `${API_URL}/hot-takes-public`);
