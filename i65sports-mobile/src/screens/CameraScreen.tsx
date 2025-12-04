@@ -31,6 +31,7 @@ export default function CameraScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [checkedInVenue, setCheckedInVenue] = useState<{ id: string; name: string } | null>(null);
+  const [editMetadata, setEditMetadata] = useState<any>(null);
   
   const cameraRef = useRef<CameraView>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -94,6 +95,8 @@ export default function CameraScreen() {
     }
   };
 
+  const [editMetadata, setEditMetadata] = useState<any>(null);
+
   const stopRecording = async () => {
     console.log('Stopping recording...');
     if (cameraRef.current && isRecording) {
@@ -112,9 +115,9 @@ export default function CameraScreen() {
           // Navigate to video editor
           (navigation as any).navigate('VideoEditor', {
             videoUri: video.uri,
-            onSave: (editedVideo: any) => {
-              // Handle the edited video
-              handleVideoEdited(editedVideo);
+            onSave: (editedVideoUri: string, metadata: any) => {
+              // Handle the edited video with metadata
+              handleVideoEdited(editedVideoUri, metadata);
             },
           });
         }
@@ -130,11 +133,17 @@ export default function CameraScreen() {
     }
   };
 
-  const handleVideoEdited = (editedVideo: any) => {
-    // Store the edited video URI (for now, using original URI)
-    // In production, you'd process the video with the edits
-    setVideoUri(editedVideo.uri);
+  const handleVideoEdited = (editedVideoUri: string, metadata: any) => {
+    // Store the edited video URI and metadata
+    setVideoUri(editedVideoUri);
+    setEditMetadata(metadata);
     setShowUploadModal(true);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleUpload = async () => {
@@ -280,6 +289,51 @@ export default function CameraScreen() {
             
             {!isUploading ? (
               <>
+                {/* Edit Info Display */}
+                {editMetadata && (
+                  <View style={styles.editInfoContainer}>
+                    <View style={styles.editInfoHeader}>
+                      <Ionicons name="checkmark-circle" size={16} color="#00FF9F" />
+                      <Text style={styles.editInfoTitle}>Video Edited</Text>
+                    </View>
+                    <View style={styles.editInfoDetails}>
+                      {(editMetadata.trimStart > 0 || (editMetadata.trimEnd && editMetadata.trimEnd < 60)) && (
+                        <Text style={styles.editInfoText}>
+                          ✂️ Trimmed to {formatTime(editMetadata.trimEnd - editMetadata.trimStart)}
+                        </Text>
+                      )}
+                      {editMetadata.playbackSpeed !== 1.0 && (
+                        <Text style={styles.editInfoText}>
+                          ⚡ Speed: {editMetadata.playbackSpeed.toFixed(1)}x
+                        </Text>
+                      )}
+                      {editMetadata.filter && editMetadata.filter !== 'none' && (
+                        <Text style={styles.editInfoText}>
+                          🎨 Filter: {editMetadata.filter}
+                        </Text>
+                      )}
+                      {editMetadata.textOverlays && editMetadata.textOverlays.length > 0 && (
+                        <Text style={styles.editInfoText}>
+                          📝 {editMetadata.textOverlays.length} text overlay{editMetadata.textOverlays.length > 1 ? 's' : ''}
+                        </Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      style={styles.reEditButton}
+                      onPress={() => {
+                        (navigation as any).navigate('VideoEditor', {
+                          videoUri: videoUri || '',
+                          onSave: (newUri: string, newMetadata: any) => {
+                            handleVideoEdited(newUri, newMetadata);
+                          },
+                        });
+                      }}
+                    >
+                      <Text style={styles.reEditText}>Edit Again</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 <TextInput
                   style={styles.input}
                   placeholder="Give your Hot Take a title..."
@@ -521,5 +575,43 @@ const styles = StyleSheet.create({
     height: 50,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  editInfoContainer: {
+    backgroundColor: '#1A1F3A',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  editInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  editInfoTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#00FF9F',
+  },
+  editInfoDetails: {
+    gap: 6,
+    marginBottom: 12,
+  },
+  editInfoText: {
+    fontSize: 14,
+    color: '#B8C5D6',
+  },
+  reEditButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#00FF9F',
+  },
+  reEditText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#00FF9F',
   },
 });

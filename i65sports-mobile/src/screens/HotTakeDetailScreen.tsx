@@ -517,6 +517,43 @@ export default function HotTakeDetailScreen() {
               <Ionicons name="folder-outline" size={32} color="#FFFFFF" />
               <Text style={styles.actionText}>Collection</Text>
             </TouchableOpacity>
+
+            {/* Edit Video - Only for own videos */}
+            {user?.id === hotTake.author.id && (
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => {
+                  navigation.navigate('VideoEditor' as never, {
+                    videoUri: hotTake.videoUrl,
+                    onSave: (editedUri: string, metadata: any) => {
+                      Alert.alert(
+                        'Replace Video',
+                        'This will replace your Hot Take with the edited version. Continue?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Replace',
+                            onPress: async () => {
+                              // TODO: Call API to update video with edited version
+                              console.log('Replace video:', editedUri, metadata);
+                              Toast.show({
+                                type: 'info',
+                                text1: 'Video editing',
+                                text2: 'This feature is coming soon!',
+                                position: 'bottom',
+                              });
+                            },
+                          },
+                        ]
+                      );
+                    },
+                  } as never);
+                }}
+              >
+                <Ionicons name="create-outline" size={32} color="#FFFFFF" />
+                <Text style={styles.actionText}>Edit</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </Animated.View>
       )}

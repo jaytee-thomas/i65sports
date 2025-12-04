@@ -9,162 +9,172 @@ import {
   TextInput,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import Slider from '@react-native-community/slider';
-import { haptics } from '../utils/haptics';
-import Toast from 'react-native-toast-message';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
-interface VideoEditorRoute {
-  videoUri: string;
-  onSave: (editedVideo: EditedVideo) => void;
+type RouteParams = {
+  VideoEditor: {
+    videoUri: string;
+    onSave: (editedVideoUri: string, metadata: EditMetadata) => void;
+  };
+};
+
+interface TextOverlay {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  color: string;
 }
 
-interface EditedVideo {
-  uri: string;
+interface EditMetadata {
   trimStart: number;
   trimEnd: number;
-  textOverlay?: string;
-  filter?: string;
-  playbackRate?: number;
+  playbackSpeed: number;
+  filter: string;
+  textOverlays: TextOverlay[];
 }
 
+const FILTERS = [
+  { id: 'none', name: 'Original' },
+  { id: 'bw', name: 'B&W' },
+  { id: 'vintage', name: 'Vintage' },
+  { id: 'vibrant', name: 'Vibrant' },
+  { id: 'cool', name: 'Cool' },
+  { id: 'warm', name: 'Warm' },
+];
+
 export default function VideoEditorScreen() {
-  const route = useRoute();
+  const route = useRoute<RouteProp<RouteParams, 'VideoEditor'>>();
   const navigation = useNavigation();
-  const { videoUri, onSave } = route.params as VideoEditorRoute;
+  const { videoUri, onSave } = route.params;
 
   const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
-  const [position, setPosition] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   
-  // Editing states
+  // Editing state
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(0);
-  const [textOverlay, setTextOverlay] = useState('');
-  const [showTextInput, setShowTextInput] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
-  const [playbackRate, setPlaybackRate] = useState(1.0);
-  const [saving, setSaving] = useState(false);
-
-  const filters = [
-    { id: 'none', name: 'Original', style: {} },
-    { id: 'bw', name: 'B&W', style: { tintColor: 'grayscale' } },
-    { id: 'warm', name: 'Warm', style: { tintColor: '#FFA500' } },
-    { id: 'cool', name: 'Cool', style: { tintColor: '#00CED1' } },
-    { id: 'vintage', name: 'Vintage', style: { tintColor: '#D4A574' } },
-  ];
-
-  const speeds = [
-    { value: 0.5, label: '0.5x', icon: 'play-back' },
-    { value: 1.0, label: '1x', icon: 'play' },
-    { value: 1.5, label: '1.5x', icon: 'play-forward' },
-    { value: 2.0, label: '2x', icon: 'play-forward' },
-  ];
+  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [selectedFilter, setSelectedFilter] = useState('none');
+  const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
+  const [newOverlayText, setNewOverlayText] = useState('');
+  
+  // UI state
+  const [activeTab, setActiveTab] = useState<'trim' | 'text' | 'filter' | 'speed'>('trim');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     loadVideo();
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.unloadAsync();
+      }
+    };
   }, []);
 
   const loadVideo = async () => {
-    if (videoRef.current) {
-      const status = await videoRef.current.getStatusAsync();
-      if (status.isLoaded) {
-        setDuration(status.durationMillis ? status.durationMillis / 1000 : 0);
-        setTrimEnd(status.durationMillis ? status.durationMillis / 1000 : 0);
-      }
-    }
+    // Video will auto-load when ref is set
   };
 
-  const onPlaybackStatusUpdate = (status: AVPlaybackStatus) => {
+  const handlePlaybackStatusUpdate = (status: AVPlaybackStatus) => {
     if (status.isLoaded) {
-      setPosition(status.positionMillis / 1000);
+      setCurrentTime(status.positionMillis / 1000);
       setIsPlaying(status.isPlaying);
+      
+      if (duration === 0 && status.durationMillis) {
+        const dur = status.durationMillis / 1000;
+        setDuration(dur);
+        setTrimEnd(dur);
+      }
 
-      // Auto-pause at trim end
+      // Auto-loop within trim range
       if (trimEnd > 0 && status.positionMillis / 1000 >= trimEnd) {
-        videoRef.current?.pauseAsync();
         videoRef.current?.setPositionAsync(trimStart * 1000);
       }
     }
   };
 
-  const handlePlayPause = async () => {
-    haptics.light();
+  const togglePlayPause = () => {
     if (isPlaying) {
-      await videoRef.current?.pauseAsync();
+      videoRef.current?.pauseAsync();
     } else {
-      await videoRef.current?.playAsync();
+      videoRef.current?.playAsync();
     }
   };
 
-  const handleSeek = async (value: number) => {
-    await videoRef.current?.setPositionAsync(value * 1000);
+  const handleSeek = (value: number) => {
+    videoRef.current?.setPositionAsync(value * 1000);
+    setCurrentTime(value);
   };
 
-  const handleTrimStart = (value: number) => {
-    setTrimStart(value);
-    if (value > trimEnd) {
-      setTrimEnd(value);
-    }
+  const addTextOverlay = () => {
+    if (!newOverlayText.trim()) return;
+
+    const newOverlay: TextOverlay = {
+      id: Date.now().toString(),
+      text: newOverlayText,
+      x: 50,
+      y: 50,
+      fontSize: 32,
+      color: '#FFFFFF',
+    };
+
+    setTextOverlays([...textOverlays, newOverlay]);
+    setNewOverlayText('');
   };
 
-  const handleTrimEnd = (value: number) => {
-    setTrimEnd(value);
-    if (value < trimStart) {
-      setTrimStart(value);
-    }
+  const removeTextOverlay = (id: string) => {
+    setTextOverlays(textOverlays.filter((overlay) => overlay.id !== id));
   };
 
-  const handleFilterSelect = (filterId: string) => {
-    haptics.light();
-    setSelectedFilter(filterId === 'none' ? null : filterId);
-  };
-
-  const handleSpeedChange = async (speed: number) => {
-    haptics.light();
-    setPlaybackRate(speed);
-    await videoRef.current?.setRateAsync(speed, true);
-  };
-
-  const handleSave = async () => {
+  const saveEdits = async () => {
     try {
-      haptics.success();
-      setSaving(true);
+      setIsProcessing(true);
 
-      // In a real app, you'd process the video here
-      // For now, we'll just return the edited parameters
-      const editedVideo: EditedVideo = {
-        uri: videoUri,
+      // For now, we'll pass the original video URI with metadata
+      // The backend will handle the actual processing
+      const metadata: EditMetadata = {
         trimStart,
         trimEnd,
-        textOverlay: textOverlay || undefined,
-        filter: selectedFilter || undefined,
-        playbackRate,
+        playbackSpeed,
+        filter: selectedFilter,
+        textOverlays,
       };
 
-      Toast.show({
-        type: 'success',
-        text1: 'Video edited successfully!',
-        position: 'bottom',
-      });
-
-      onSave(editedVideo);
-      navigation.goBack();
+      Alert.alert(
+        'Save Video',
+        'Video edits will be applied when posting. Continue?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Continue',
+            onPress: () => {
+              onSave(videoUri, metadata);
+              navigation.goBack();
+            },
+          },
+        ]
+      );
     } catch (error) {
-      console.error('Error saving video:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Failed to save video',
-        position: 'bottom',
-      });
+      console.error('Error saving edits:', error);
+      Alert.alert('Error', 'Failed to save edits');
     } finally {
-      setSaving(false);
+      setIsProcessing(false);
     }
   };
 
@@ -178,15 +188,22 @@ export default function VideoEditorScreen() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.cancelButton}
+          onPress={() => navigation.goBack()}
+        >
           <Ionicons name="close" size={28} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Video</Text>
-        <TouchableOpacity onPress={handleSave} disabled={saving}>
-          {saving ? (
+        <TouchableOpacity
+          style={styles.doneButton}
+          onPress={saveEdits}
+          disabled={isProcessing}
+        >
+          {isProcessing ? (
             <ActivityIndicator color="#00FF9F" />
           ) : (
-            <Ionicons name="checkmark" size={28} color="#00FF9F" />
+            <Text style={styles.doneText}>Done</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -198,196 +215,301 @@ export default function VideoEditorScreen() {
           source={{ uri: videoUri }}
           style={styles.video}
           resizeMode={ResizeMode.CONTAIN}
-          shouldPlay={false}
-          isLooping={false}
-          rate={playbackRate}
-          onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+          isLooping
+          onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+          rate={playbackSpeed}
         />
 
-        {/* Text Overlay Preview */}
-        {textOverlay && (
-          <View style={styles.textOverlayContainer}>
-            <Text style={styles.textOverlay}>{textOverlay}</Text>
+        {/* Text Overlays Preview */}
+        {textOverlays.map((overlay) => (
+          <View
+            key={overlay.id}
+            style={[
+              styles.textOverlayPreview,
+              {
+                left: overlay.x,
+                top: overlay.y,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.overlayText,
+                {
+                  fontSize: overlay.fontSize,
+                  color: overlay.color,
+                },
+              ]}
+            >
+              {overlay.text}
+            </Text>
+            <TouchableOpacity
+              style={styles.removeOverlayButton}
+              onPress={() => removeTextOverlay(overlay.id)}
+            >
+              <Ionicons name="close-circle" size={20} color="#FF1493" />
+            </TouchableOpacity>
           </View>
-        )}
+        ))}
 
         {/* Play/Pause Button */}
-        <TouchableOpacity style={styles.playButton} onPress={handlePlayPause}>
+        <TouchableOpacity style={styles.playButton} onPress={togglePlayPause}>
           <Ionicons
             name={isPlaying ? 'pause' : 'play'}
             size={48}
-            color="rgba(255,255,255,0.9)"
+            color="#FFFFFF"
           />
         </TouchableOpacity>
 
         {/* Filter Indicator */}
-        {selectedFilter && (
-          <View style={styles.filterBadge}>
-            <Text style={styles.filterBadgeText}>
-              {filters.find(f => f.id === selectedFilter)?.name}
+        {selectedFilter !== 'none' && (
+          <View style={styles.filterIndicator}>
+            <Text style={styles.filterIndicatorText}>
+              {FILTERS.find((f) => f.id === selectedFilter)?.name}
             </Text>
           </View>
         )}
       </View>
 
-      {/* Playback Controls */}
-      <View style={styles.controlsSection}>
-        <View style={styles.timelineContainer}>
-          <Text style={styles.timeText}>{formatTime(position)}</Text>
-          <Slider
-            style={styles.slider}
-            value={position}
-            minimumValue={0}
-            maximumValue={duration}
-            minimumTrackTintColor="#00FF9F"
-            maximumTrackTintColor="#3A4166"
-            thumbTintColor="#00FF9F"
-            onSlidingComplete={handleSeek}
-          />
-          <Text style={styles.timeText}>{formatTime(duration)}</Text>
-        </View>
+      {/* Timeline */}
+      <View style={styles.timeline}>
+        <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
+        <Slider
+          style={styles.slider}
+          value={currentTime}
+          minimumValue={0}
+          maximumValue={duration}
+          onValueChange={handleSeek}
+          minimumTrackTintColor="#00FF9F"
+          maximumTrackTintColor="#3A4166"
+          thumbTintColor="#00FF9F"
+        />
+        <Text style={styles.timeText}>{formatTime(duration)}</Text>
       </View>
 
-      {/* Editing Tools */}
-      <ScrollView style={styles.toolsSection} showsVerticalScrollIndicator={false}>
-        {/* Trim Section */}
-        <View style={styles.toolGroup}>
-          <View style={styles.toolHeader}>
-            <Ionicons name="cut" size={20} color="#00FF9F" />
-            <Text style={styles.toolTitle}>Trim Video</Text>
-          </View>
-          
-          <View style={styles.trimContainer}>
-            <View style={styles.trimControl}>
-              <Text style={styles.trimLabel}>Start: {formatTime(trimStart)}</Text>
+      {/* Editing Tabs */}
+      <View style={styles.tabs}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'trim' && styles.activeTab]}
+          onPress={() => setActiveTab('trim')}
+        >
+          <Ionicons
+            name="cut"
+            size={20}
+            color={activeTab === 'trim' ? '#00FF9F' : '#8892A6'}
+          />
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'trim' && styles.activeTabText,
+            ]}
+          >
+            Trim
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'text' && styles.activeTab]}
+          onPress={() => setActiveTab('text')}
+        >
+          <Ionicons
+            name="text"
+            size={20}
+            color={activeTab === 'text' ? '#00FF9F' : '#8892A6'}
+          />
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'text' && styles.activeTabText,
+            ]}
+          >
+            Text
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'filter' && styles.activeTab]}
+          onPress={() => setActiveTab('filter')}
+        >
+          <Ionicons
+            name="color-filter"
+            size={20}
+            color={activeTab === 'filter' ? '#00FF9F' : '#8892A6'}
+          />
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'filter' && styles.activeTabText,
+            ]}
+          >
+            Filter
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'speed' && styles.activeTab]}
+          onPress={() => setActiveTab('speed')}
+        >
+          <Ionicons
+            name="speedometer"
+            size={20}
+            color={activeTab === 'speed' ? '#00FF9F' : '#8892A6'}
+          />
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'speed' && styles.activeTabText,
+            ]}
+          >
+            Speed
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Editing Controls */}
+      <ScrollView style={styles.controls}>
+        {activeTab === 'trim' && (
+          <View style={styles.trimControls}>
+            <Text style={styles.controlLabel}>Trim Start</Text>
+            <View style={styles.trimRow}>
+              <Text style={styles.trimTime}>{formatTime(trimStart)}</Text>
               <Slider
-                style={styles.slider}
+                style={styles.trimSlider}
                 value={trimStart}
                 minimumValue={0}
                 maximumValue={duration}
+                onValueChange={setTrimStart}
                 minimumTrackTintColor="#00FF9F"
                 maximumTrackTintColor="#3A4166"
                 thumbTintColor="#00FF9F"
-                onValueChange={handleTrimStart}
               />
             </View>
-            
-            <View style={styles.trimControl}>
-              <Text style={styles.trimLabel}>End: {formatTime(trimEnd)}</Text>
+
+            <Text style={styles.controlLabel}>Trim End</Text>
+            <View style={styles.trimRow}>
+              <Text style={styles.trimTime}>{formatTime(trimEnd)}</Text>
               <Slider
-                style={styles.slider}
+                style={styles.trimSlider}
                 value={trimEnd}
-                minimumValue={0}
+                minimumValue={trimStart}
                 maximumValue={duration}
+                onValueChange={setTrimEnd}
                 minimumTrackTintColor="#00FF9F"
                 maximumTrackTintColor="#3A4166"
                 thumbTintColor="#00FF9F"
-                onValueChange={handleTrimEnd}
               />
             </View>
-          </View>
-        </View>
 
-        {/* Text Overlay Section */}
-        <View style={styles.toolGroup}>
-          <View style={styles.toolHeader}>
-            <Ionicons name="text" size={20} color="#00FF9F" />
-            <Text style={styles.toolTitle}>Text Overlay</Text>
-          </View>
-          
-          {showTextInput ? (
-            <View style={styles.textInputContainer}>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Enter text..."
-                placeholderTextColor="#8892A6"
-                value={textOverlay}
-                onChangeText={setTextOverlay}
-                maxLength={50}
-              />
-              <TouchableOpacity
-                onPress={() => {
-                  haptics.light();
-                  setShowTextInput(false);
-                }}
-              >
-                <Ionicons name="checkmark-circle" size={28} color="#00FF9F" />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.addTextButton}
-              onPress={() => {
-                haptics.light();
-                setShowTextInput(true);
-              }}
-            >
-              <Ionicons name="add-circle-outline" size={24} color="#00FF9F" />
-              <Text style={styles.addTextButtonText}>
-                {textOverlay ? 'Edit Text' : 'Add Text'}
+            <View style={styles.durationBox}>
+              <Text style={styles.durationLabel}>Final Duration</Text>
+              <Text style={styles.durationText}>
+                {formatTime(trimEnd - trimStart)}
               </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Filters Section */}
-        <View style={styles.toolGroup}>
-          <View style={styles.toolHeader}>
-            <Ionicons name="color-filter" size={20} color="#00FF9F" />
-            <Text style={styles.toolTitle}>Filters</Text>
+            </View>
           </View>
-          
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {filters.map((filter) => (
+        )}
+
+        {activeTab === 'text' && (
+          <View style={styles.textControls}>
+            <Text style={styles.controlLabel}>Add Text Overlay</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Enter text..."
+              placeholderTextColor="#8892A6"
+              value={newOverlayText}
+              onChangeText={setNewOverlayText}
+              maxLength={50}
+            />
+            <TouchableOpacity
+              style={[
+                styles.addTextButton,
+                !newOverlayText.trim() && styles.addTextButtonDisabled,
+              ]}
+              onPress={addTextOverlay}
+              disabled={!newOverlayText.trim()}
+            >
+              <Ionicons name="add" size={20} color="#FFFFFF" />
+              <Text style={styles.addTextText}>Add Text</Text>
+            </TouchableOpacity>
+
+            {textOverlays.length > 0 && (
+              <View style={styles.overlaysList}>
+                <Text style={styles.overlaysTitle}>Text Overlays:</Text>
+                {textOverlays.map((overlay) => (
+                  <View key={overlay.id} style={styles.overlayItem}>
+                    <Text style={styles.overlayItemText} numberOfLines={1}>
+                      {overlay.text}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => removeTextOverlay(overlay.id)}
+                    >
+                      <Ionicons name="trash-outline" size={20} color="#FF1493" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
+        {activeTab === 'filter' && (
+          <View style={styles.filterControls}>
+            <Text style={styles.controlLabel}>Choose Filter</Text>
+            {FILTERS.map((filter) => (
               <TouchableOpacity
                 key={filter.id}
                 style={[
                   styles.filterOption,
                   selectedFilter === filter.id && styles.filterOptionActive,
                 ]}
-                onPress={() => handleFilterSelect(filter.id)}
+                onPress={() => setSelectedFilter(filter.id)}
               >
-                <View style={[styles.filterPreview, filter.style]} />
-                <Text style={styles.filterName}>{filter.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Speed Controls Section */}
-        <View style={styles.toolGroup}>
-          <View style={styles.toolHeader}>
-            <Ionicons name="speedometer" size={20} color="#00FF9F" />
-            <Text style={styles.toolTitle}>Playback Speed</Text>
-          </View>
-          
-          <View style={styles.speedContainer}>
-            {speeds.map((speed) => (
-              <TouchableOpacity
-                key={speed.value}
-                style={[
-                  styles.speedButton,
-                  playbackRate === speed.value && styles.speedButtonActive,
-                ]}
-                onPress={() => handleSpeedChange(speed.value)}
-              >
-                <Ionicons
-                  name={speed.icon as any}
-                  size={20}
-                  color={playbackRate === speed.value ? '#0A0E27' : '#FFFFFF'}
-                />
+                <View style={styles.filterRadio}>
+                  {selectedFilter === filter.id && (
+                    <View style={styles.filterRadioInner} />
+                  )}
+                </View>
                 <Text
                   style={[
-                    styles.speedText,
-                    playbackRate === speed.value && styles.speedTextActive,
+                    styles.filterName,
+                    selectedFilter === filter.id && styles.filterNameActive,
                   ]}
                 >
-                  {speed.label}
+                  {filter.name}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        )}
+
+        {activeTab === 'speed' && (
+          <View style={styles.speedControls}>
+            <Text style={styles.controlLabel}>Playback Speed</Text>
+            <View style={styles.speedDisplay}>
+              <Text style={styles.speedValue}>{playbackSpeed.toFixed(1)}x</Text>
+              <Text style={styles.speedDescription}>
+                {playbackSpeed < 1 ? 'Slow Motion' : playbackSpeed > 1 ? 'Fast Forward' : 'Normal'}
+              </Text>
+            </View>
+            <Slider
+              style={styles.speedSlider}
+              value={playbackSpeed}
+              minimumValue={0.5}
+              maximumValue={2.0}
+              step={0.1}
+              onValueChange={setPlaybackSpeed}
+              minimumTrackTintColor="#00FF9F"
+              maximumTrackTintColor="#3A4166"
+              thumbTintColor="#00FF9F"
+            />
+            <View style={styles.speedMarkers}>
+              <Text style={styles.speedMarker}>0.5x</Text>
+              <Text style={styles.speedMarker}>1.0x</Text>
+              <Text style={styles.speedMarker}>1.5x</Text>
+              <Text style={styles.speedMarker}>2.0x</Text>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -400,197 +522,296 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#3A4166',
+    borderBottomColor: '#1A1F3A',
   },
+  cancelButton: {},
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
+  doneButton: {},
+  doneText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#00FF9F',
+  },
   videoContainer: {
     width: width,
     height: width * (16 / 9),
     backgroundColor: '#000000',
-    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   video: {
     width: '100%',
     height: '100%',
   },
+  textOverlayPreview: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  overlayText: {
+    fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 3,
+  },
+  removeOverlayButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 10,
+    padding: 2,
+  },
   playButton: {
     position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [{ translateX: -24 }, { translateY: -24 }],
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  textOverlayContainer: {
-    position: 'absolute',
-    bottom: 40,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  textOverlay: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 10,
-    paddingHorizontal: 20,
-    textAlign: 'center',
-  },
-  filterBadge: {
+  filterIndicator: {
     position: 'absolute',
     top: 16,
     right: 16,
     backgroundColor: 'rgba(0, 255, 159, 0.9)',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 12,
   },
-  filterBadgeText: {
+  filterIndicatorText: {
     fontSize: 12,
-    fontWeight: 'bold',
-    color: '#0A0E27',
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  controlsSection: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3A4166',
-  },
-  timelineContainer: {
+  timeline: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     gap: 12,
+    backgroundColor: '#0A0E27',
   },
   timeText: {
     fontSize: 12,
     color: '#B8C5D6',
     width: 40,
+    textAlign: 'center',
   },
   slider: {
     flex: 1,
-    height: 40,
   },
-  toolsSection: {
-    flex: 1,
-    padding: 16,
-  },
-  toolGroup: {
-    marginBottom: 24,
-  },
-  toolHeader: {
+  tabs: {
     flexDirection: 'row',
-    alignItems: 'center',
+    paddingHorizontal: 16,
     gap: 8,
-    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1A1F3A',
+    backgroundColor: '#0A0E27',
   },
-  toolTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  trimContainer: {
-    gap: 12,
-  },
-  trimControl: {
-    gap: 8,
-  },
-  trimLabel: {
-    fontSize: 14,
-    color: '#B8C5D6',
-  },
-  textInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#1A1F3A',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#3A4166',
-  },
-  textInput: {
-    flex: 1,
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
-  addTextButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#1A1F3A',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#3A4166',
-  },
-  addTextButtonText: {
-    fontSize: 14,
-    color: '#00FF9F',
-    fontWeight: '600',
-  },
-  filterOption: {
-    alignItems: 'center',
-    marginRight: 16,
-    padding: 8,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  filterOptionActive: {
-    borderColor: '#00FF9F',
-    backgroundColor: '#1A1F3A',
-  },
-  filterPreview: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: '#3A4166',
-    marginBottom: 8,
-  },
-  filterName: {
-    fontSize: 12,
-    color: '#B8C5D6',
-  },
-  speedContainer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  speedButton: {
+  tab: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 12,
     gap: 6,
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#00FF9F',
+  },
+  tabText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8892A6',
+  },
+  activeTabText: {
+    color: '#00FF9F',
+  },
+  controls: {
+    flex: 1,
+    backgroundColor: '#0A0E27',
+  },
+  trimControls: {
+    padding: 16,
+  },
+  controlLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#B8C5D6',
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  trimRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  trimTime: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#00FF9F',
+    width: 50,
+  },
+  trimSlider: {
+    flex: 1,
+  },
+  durationBox: {
     backgroundColor: '#1A1F3A',
     borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#3A4166',
+    padding: 20,
+    alignItems: 'center',
+    marginTop: 24,
   },
-  speedButtonActive: {
-    backgroundColor: '#00FF9F',
-    borderColor: '#00FF9F',
-  },
-  speedText: {
+  durationLabel: {
     fontSize: 14,
+    color: '#8892A6',
+    marginBottom: 8,
+  },
+  durationText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#00FF9F',
+  },
+  textControls: {
+    padding: 16,
+  },
+  textInput: {
+    backgroundColor: '#1A1F3A',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  addTextButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#00FF9F',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  addTextButtonDisabled: {
+    backgroundColor: '#3A4166',
+    opacity: 0.5,
+  },
+  addTextText: {
+    fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  speedTextActive: {
-    color: '#0A0E27',
+  overlaysList: {
+    marginTop: 24,
+  },
+  overlaysTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#B8C5D6',
+    marginBottom: 12,
+  },
+  overlayItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1A1F3A',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  overlayItemText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#FFFFFF',
+    marginRight: 12,
+  },
+  filterControls: {
+    padding: 16,
+  },
+  filterOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1A1F3A',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 8,
+    gap: 12,
+  },
+  filterOptionActive: {
+    backgroundColor: 'rgba(0, 255, 159, 0.1)',
+    borderWidth: 2,
+    borderColor: '#00FF9F',
+  },
+  filterRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#8892A6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterRadioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#00FF9F',
+  },
+  filterName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  filterNameActive: {
+    color: '#00FF9F',
+    fontWeight: '600',
+  },
+  speedControls: {
+    padding: 16,
+  },
+  speedDisplay: {
+    backgroundColor: '#1A1F3A',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  speedValue: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#00FF9F',
+    marginBottom: 8,
+  },
+  speedDescription: {
+    fontSize: 14,
+    color: '#8892A6',
+  },
+  speedSlider: {
+    width: '100%',
+    marginBottom: 8,
+  },
+  speedMarkers: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+  },
+  speedMarker: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8892A6',
   },
 });
-
