@@ -51,8 +51,14 @@ interface Message {
 export default function ChatScreen() {
   const route = useRoute<RouteProp<RouteParams, 'Chat'>>();
   const navigation = useNavigation();
-  const { conversationId, conversationName, isGroup } = route.params;
+  
+  // Safely extract params with defaults
+  const conversationId = route.params?.conversationId;
+  const conversationName = route.params?.conversationName || 'Chat';
+  const isGroup = route.params?.isGroup || false;
+  
   const { getToken } = useAuth();
+  
   const { user } = useUser();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -63,6 +69,10 @@ export default function ChatScreen() {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    if (!conversationId) {
+      console.error('❌ ChatScreen: conversationId is missing from route params');
+      return;
+    }
     loadMessages();
     joinConversation();
 
@@ -70,7 +80,20 @@ export default function ChatScreen() {
     const messageHandler = (data: any) => {
       console.log('💬 Received DM:', data);
       if (data.conversationId === conversationId) {
-        setMessages((prev) => [...prev, data]);
+        // Normalize socket message format to match API format
+        const normalizedMessage: Message = {
+          id: data.id || `socket-${Date.now()}`,
+          content: data.content,
+          type: data.type || 'TEXT',
+          createdAt: data.timestamp || new Date().toISOString(),
+          sender: {
+            id: data.senderId || '',
+            username: data.senderUsername || 'Unknown',
+            avatarUrl: data.senderAvatarUrl,
+          },
+          sharedTake: data.sharedTake,
+        };
+        setMessages((prev) => [...prev, normalizedMessage]);
         flatListRef.current?.scrollToEnd({ animated: true });
       }
     };
@@ -103,10 +126,12 @@ export default function ChatScreen() {
   }, [conversationId]);
 
   const joinConversation = () => {
+    if (!conversationId) return;
     socketService.joinConversation(conversationId);
   };
 
   const loadMessages = async () => {
+    if (!conversationId) return;
     try {
       const token = await getToken();
       const response = await axios.get(
@@ -115,14 +140,25 @@ export default function ChatScreen() {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      setMessages(response.data.messages);
+      
+      // Ensure all messages have proper structure
+      const messages = (response.data.messages || []).map((msg: any) => ({
+        ...msg,
+        sender: msg.sender || {
+          id: msg.senderId || '',
+          username: msg.senderUsername || 'Unknown',
+          avatarUrl: msg.senderAvatarUrl,
+        },
+      }));
+      
+      setMessages(messages);
     } catch (error) {
       console.error('Error loading messages:', error);
     }
   };
 
   const handleSend = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !conversationId) return;
 
     const messageContent = inputText.trim();
     setInputText('');
@@ -194,6 +230,12 @@ export default function ChatScreen() {
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
+    // Safety check for sender
+    if (!item.sender || !item.sender.id) {
+      console.warn('⚠️ Message missing sender:', item);
+      return null;
+    }
+    
     const isOwnMessage = item.sender.id === user?.id;
 
     // System message
@@ -287,6 +329,25 @@ export default function ChatScreen() {
     );
   };
 
+  // Show error screen if conversationId is missing
+  if (!conversationId) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={48} color="#FF1493" />
+          <Text style={styles.errorText}>Invalid conversation</Text>
+          <Text style={styles.errorSubtext}>Please go back and try again</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -314,7 +375,7 @@ export default function ChatScreen() {
       {/* Messages */}
       <FlatList
         ref={flatListRef}
-        data={messages}
+        data={messages.filter((msg) => msg.sender && msg.sender.id)}
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
         style={styles.messagesList}
@@ -523,6 +584,36 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     backgroundColor: '#3A4166',
     opacity: 0.5,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  errorText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginTop: 16,
+  },
+  errorSubtext: {
+    fontSize: 14,
+    color: '#8892A6',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  backButton: {
+    marginTop: 24,
+    backgroundColor: '#00FF9F',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0A0E27',
   },
 });
 

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 
-// Get messages for conversation
+// Get messages for a conversation
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -13,20 +13,48 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
-    const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const before = searchParams.get('before'); // For pagination
+    const dbUser = await prisma.user.findUnique({
+      where: { clerkId: clerkUser.id },
+    });
 
+    if (!dbUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const cursor = searchParams.get('cursor');
+    const limit = parseInt(searchParams.get('limit') || '50');
+
+    // Verify user is participant
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: params.id },
+      include: {
+        participants: true,
+      },
+    });
+
+    if (!conversation) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+    }
+
+    const isParticipant = conversation.participants.some(
+      (p) => p.userId === dbUser.id
+    );
+
+    if (!isParticipant) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    // Fetch messages with pagination
     const messages = await prisma.message.findMany({
       where: {
-        conversationId: id,
-        ...(before && {
-          createdAt: {
-            lt: new Date(before),
-          },
-        }),
+        conversationId: params.id,
+        ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
       },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit + 1,
       include: {
         sender: {
           select: {
@@ -48,31 +76,26 @@ export async function GET(
             },
           },
         },
-        readReceipts: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-              },
-            },
-          },
-        },
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: limit,
     });
 
-    return NextResponse.json({ messages: messages.reverse() });
+    let nextCursor: string | null = null;
+    if (messages.length > limit) {
+      const nextItem = messages.pop();
+      nextCursor = nextItem!.createdAt.toISOString();
+    }
+
+    // Reverse to show oldest first
+    messages.reverse();
+
+    return NextResponse.json({ messages, nextCursor });
   } catch (error) {
     console.error('[messages-get]:', error);
     return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 });
   }
 }
 
-// Send message
+// Send a new message
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
@@ -83,27 +106,41 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
-    const body = await request.json();
-    const { content, type, sharedTakeId } = body;
-
-    let dbUser = await prisma.user.findUnique({
+    const dbUser = await prisma.user.findUnique({
       where: { clerkId: clerkUser.id },
     });
 
     if (!dbUser) {
-      dbUser = await prisma.user.create({
-        data: {
-          clerkId: clerkUser.id,
-          email: clerkUser.emailAddresses[0]?.emailAddress || '',
-          username: clerkUser.username || clerkUser.emailAddresses[0]?.emailAddress.split('@')[0] || 'user',
-        },
-      });
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    const body = await request.json();
+    const { content, type, sharedTakeId } = body;
+
+    // Verify user is participant
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: params.id },
+      include: {
+        participants: true,
+      },
+    });
+
+    if (!conversation) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+    }
+
+    const isParticipant = conversation.participants.some(
+      (p) => p.userId === dbUser.id
+    );
+
+    if (!isParticipant) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    // Create message
     const message = await prisma.message.create({
       data: {
-        conversationId: id,
+        conversationId: params.id,
         senderId: dbUser.id,
         content,
         type: type || 'TEXT',
@@ -135,7 +172,7 @@ export async function POST(
 
     // Update conversation timestamp
     await prisma.conversation.update({
-      where: { id },
+      where: { id: params.id },
       data: { updatedAt: new Date() },
     });
 

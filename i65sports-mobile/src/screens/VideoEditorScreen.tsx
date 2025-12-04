@@ -15,15 +15,13 @@ import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import Slider from '@react-native-community/slider';
-import * as FileSystem from 'expo-file-system';
-import * as MediaLibrary from 'expo-media-library';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 type RouteParams = {
   VideoEditor: {
     videoUri: string;
-    onSave: (editedVideoUri: string, metadata: EditMetadata) => void;
+    draftId?: string;
   };
 };
 
@@ -45,18 +43,18 @@ interface EditMetadata {
 }
 
 const FILTERS = [
-  { id: 'none', name: 'Original' },
-  { id: 'bw', name: 'B&W' },
-  { id: 'vintage', name: 'Vintage' },
-  { id: 'vibrant', name: 'Vibrant' },
-  { id: 'cool', name: 'Cool' },
-  { id: 'warm', name: 'Warm' },
+  { id: 'none', name: 'Original', overlay: null },
+  { id: 'bw', name: 'B&W', overlay: 'rgba(128, 128, 128, 0.4)' },
+  { id: 'vintage', name: 'Vintage', overlay: 'rgba(139, 69, 19, 0.3)' },
+  { id: 'vibrant', name: 'Vibrant', overlay: 'rgba(255, 0, 128, 0.15)' },
+  { id: 'cool', name: 'Cool', overlay: 'rgba(0, 128, 255, 0.25)' },
+  { id: 'warm', name: 'Warm', overlay: 'rgba(255, 128, 0, 0.25)' },
 ];
 
 export default function VideoEditorScreen() {
   const route = useRoute<RouteProp<RouteParams, 'VideoEditor'>>();
   const navigation = useNavigation();
-  const { videoUri, onSave } = route.params;
+  const { videoUri, draftId } = route.params;
 
   const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -143,8 +141,7 @@ export default function VideoEditorScreen() {
     try {
       setIsProcessing(true);
 
-      // For now, we'll pass the original video URI with metadata
-      // The backend will handle the actual processing
+      // Create metadata object
       const metadata: EditMetadata = {
         trimStart,
         trimEnd,
@@ -153,6 +150,10 @@ export default function VideoEditorScreen() {
         textOverlays,
       };
 
+      console.log('💾 Saving edits, navigating to UploadHotTake...');
+      console.log('📹 Video URI:', videoUri);
+      console.log('✏️ Edit Metadata:', metadata);
+
       Alert.alert(
         'Save Video',
         'Video edits will be applied when posting. Continue?',
@@ -160,20 +161,28 @@ export default function VideoEditorScreen() {
           {
             text: 'Cancel',
             style: 'cancel',
+            onPress: () => setIsProcessing(false),
           },
           {
             text: 'Continue',
             onPress: () => {
-              onSave(videoUri, metadata);
-              navigation.goBack();
+              // Navigate directly to UploadHotTake with serializable data
+              const params = {
+                videoUri: videoUri,
+                editMetadata: metadata,
+                draftId: draftId,
+              };
+              
+              console.log('🚀 Navigating with params:', params);
+              // @ts-ignore - Navigation typing issue
+              navigation.navigate('UploadHotTake', params);
             },
           },
         ]
       );
     } catch (error) {
-      console.error('Error saving edits:', error);
+      console.error('❌ Error saving edits:', error);
       Alert.alert('Error', 'Failed to save edits');
-    } finally {
       setIsProcessing(false);
     }
   };
@@ -182,6 +191,12 @@ export default function VideoEditorScreen() {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Get current filter overlay color
+  const getFilterOverlay = () => {
+    const filter = FILTERS.find((f) => f.id === selectedFilter);
+    return filter?.overlay;
   };
 
   return (
@@ -261,9 +276,21 @@ export default function VideoEditorScreen() {
           />
         </TouchableOpacity>
 
+        {/* Filter Overlay */}
+        {getFilterOverlay() && (
+          <View
+            style={[
+              styles.filterOverlay,
+              { backgroundColor: getFilterOverlay() || 'transparent' },
+            ]}
+            pointerEvents="none"
+          />
+        )}
+
         {/* Filter Indicator */}
         {selectedFilter !== 'none' && (
           <View style={styles.filterIndicator}>
+            <Ionicons name="color-filter" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
             <Text style={styles.filterIndicatorText}>
               {FILTERS.find((f) => f.id === selectedFilter)?.name}
             </Text>
@@ -367,7 +394,7 @@ export default function VideoEditorScreen() {
       </View>
 
       {/* Editing Controls */}
-      <ScrollView style={styles.controls}>
+      <ScrollView style={styles.controls} contentContainerStyle={styles.controlsContent}>
         {activeTab === 'trim' && (
           <View style={styles.trimControls}>
             <Text style={styles.controlLabel}>Trim Start</Text>
@@ -455,6 +482,9 @@ export default function VideoEditorScreen() {
         {activeTab === 'filter' && (
           <View style={styles.filterControls}>
             <Text style={styles.controlLabel}>Choose Filter</Text>
+            <Text style={styles.filterHint}>
+              Tap a filter to see a preview
+            </Text>
             {FILTERS.map((filter) => (
               <TouchableOpacity
                 key={filter.id}
@@ -477,6 +507,11 @@ export default function VideoEditorScreen() {
                 >
                   {filter.name}
                 </Text>
+                {filter.id !== 'none' && (
+                  <View style={[styles.filterPreview, { backgroundColor: filter.overlay || '#1A1F3A' }]}>
+                    <Text style={styles.filterPreviewText}>Preview</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ))}
           </View>
@@ -543,7 +578,7 @@ const styles = StyleSheet.create({
   },
   videoContainer: {
     width: width,
-    height: width * (16 / 9),
+    height: height * 0.35,
     backgroundColor: '#000000',
     justifyContent: 'center',
     alignItems: 'center',
@@ -551,6 +586,14 @@ const styles = StyleSheet.create({
   video: {
     width: '100%',
     height: '100%',
+  },
+  filterOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: 'none',
   },
   textOverlayPreview: {
     position: 'absolute',
@@ -582,6 +625,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 16,
     right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: 'rgba(0, 255, 159, 0.9)',
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -596,7 +641,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 8,
     gap: 12,
     backgroundColor: '#0A0E27',
   },
@@ -641,6 +686,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0A0E27',
   },
+  controlsContent: {
+    paddingBottom: 40,
+  },
   trimControls: {
     padding: 16,
   },
@@ -648,7 +696,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#B8C5D6',
-    marginTop: 16,
+    marginTop: 8,
     marginBottom: 12,
   },
   trimRow: {
@@ -671,7 +719,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 16,
   },
   durationLabel: {
     fontSize: 14,
@@ -741,6 +789,12 @@ const styles = StyleSheet.create({
   filterControls: {
     padding: 16,
   },
+  filterHint: {
+    fontSize: 13,
+    color: '#8892A6',
+    marginBottom: 16,
+    fontStyle: 'italic',
+  },
   filterOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -772,12 +826,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#00FF9F',
   },
   filterName: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '500',
     color: '#FFFFFF',
   },
   filterNameActive: {
     color: '#00FF9F',
+    fontWeight: '600',
+  },
+  filterPreview: {
+    width: 60,
+    height: 30,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#3A4166',
+  },
+  filterPreviewText: {
+    fontSize: 9,
+    color: '#FFFFFF',
     fontWeight: '600',
   },
   speedControls: {

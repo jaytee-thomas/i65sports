@@ -31,6 +31,7 @@ interface Collection {
   description?: string;
   isPublic: boolean;
   userId: string;
+  isOwner?: boolean; // Added from backend
   user: {
     id: string;
     username: string;
@@ -85,6 +86,11 @@ export default function CollectionDetailScreen() {
         }
       );
       setCollection(response.data.collection);
+      
+      // DEBUG: Check owner status
+      console.log('🔍 Collection userId:', response.data.collection.userId);
+      console.log('🔍 Collection isOwner:', response.data.collection.isOwner);
+      console.log('🔍 Current user?.id:', user?.id);
     } catch (error) {
       console.error('Error loading collection:', error);
       Toast.show({
@@ -189,15 +195,15 @@ export default function CollectionDetailScreen() {
   };
 
   const renderHotTake = ({ item }: { item: any }) => {
-    const isOwner = collection?.userId === user?.id;
+    const isOwner = collection?.isOwner ?? false;
 
     return (
       <TouchableOpacity
         style={styles.hotTakeCard}
         onPress={() =>
-          navigation.navigate('HotTakeDetail' as never, {
+          (navigation as any).navigate('HotTakeDetail', {
             hotTake: item.hotTake,
-          } as never)
+          })
         }
       >
         <View style={styles.thumbnail}>
@@ -257,7 +263,10 @@ export default function CollectionDetailScreen() {
     );
   }
 
-  const isOwner = collection.userId === user?.id;
+  const isOwner = collection.isOwner ?? false;
+  
+  // DEBUG: Log owner check in render
+  console.log('🎯 Rendering collection. isOwner:', isOwner);
 
   return (
     <SafeAreaView style={styles.container}>

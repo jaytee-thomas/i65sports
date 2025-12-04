@@ -159,17 +159,16 @@ export default function ProfileScreen() {
   const renderVideoThumbnail = ({ item }: { item: HotTake }) => (
     <TouchableOpacity
       style={styles.videoThumbnail}
-      onPress={() =>
-        navigation.navigate('HotTakeDetail' as never, {
-          hotTake: {
-            ...item,
-            author: {
-              id: profile?.id,
-              username: profile?.username || 'user',
-            },
+      onPress={() => {
+        const hotTakeWithAuthor = {
+          ...item,
+          author: {
+            id: profile?.id,
+            username: profile?.username || 'user',
           },
-        } as never)
-      }
+        };
+        (navigation as any).navigate('HotTakeDetail', { hotTake: hotTakeWithAuthor });
+      }}
       onLongPress={() => handleDeleteHotTake(item.id)}
     >
       {item.thumbUrl ? (
@@ -233,25 +232,6 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      {/* TEST: Logout & Reset Onboarding Button */}
-      <TouchableOpacity
-        style={{
-          backgroundColor: '#FF6B6B',
-          padding: 12,
-          borderRadius: 8,
-          margin: 16,
-        }}
-        onPress={async () => {
-          await AsyncStorage.removeItem('hasSeenOnboarding');
-          await signOut();
-          Alert.alert('Logged out!', 'Restart app to see onboarding.');
-        }}
-      >
-        <Text style={{ color: '#FFFFFF', textAlign: 'center', fontWeight: 'bold' }}>
-          TEST: Logout & Reset Onboarding
-        </Text>
-      </TouchableOpacity>
-
       {/* Profile Header */}
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
@@ -304,6 +284,18 @@ export default function ProfileScreen() {
               <View style={styles.menuItemLeft}>
                 <Ionicons name="document-text-outline" size={24} color="#00FF9F" />
                 <Text style={styles.menuItemText}>My Drafts</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#8892A6" />
+            </TouchableOpacity>
+
+            {/* My Collections Menu Item */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => navigation.navigate('Collections' as never)}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="folder-outline" size={24} color="#00FF9F" />
+                <Text style={styles.menuItemText}>My Collections</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#8892A6" />
             </TouchableOpacity>

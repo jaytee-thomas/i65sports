@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -21,6 +22,8 @@ import { HotTakeCardSkeleton } from '../components/SkeletonLoader';
 import Toast from 'react-native-toast-message';
 import { TrendingBadge } from '../components/TrendingBadge';
 import { useTrendingDetection } from '../hooks/useTrendingDetection';
+import { BookmarkButton } from '../components/BookmarkButton';
+import { AddToCollectionSheet } from '../components/AddToCollectionSheet';
 
 // Haptics utility
 const haptics = {
@@ -91,6 +94,7 @@ export default function HomeScreen() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedTakeForCollection, setSelectedTakeForCollection] = useState<string | null>(null);
 
   // Trending detection
   const trendingTakes = useTrendingDetection(hotTakes);
@@ -171,6 +175,61 @@ export default function HomeScreen() {
     ]);
   };
 
+  // Delete Hot Take
+  const handleDeleteHotTake = async (hotTakeId: string, authorId: string) => {
+    // Only allow users to delete their own Hot Takes
+    if (authorId !== userId) {
+      Toast.show({
+        type: 'error',
+        text1: 'Cannot delete',
+        text2: 'You can only delete your own Hot Takes',
+        position: 'bottom',
+      });
+      return;
+    }
+
+    Alert.alert(
+      'Delete Hot Take',
+      'Are you sure you want to delete this Hot Take? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await getToken();
+              
+              await axios.delete(`${API_URL}/hot-takes/${hotTakeId}`, {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              });
+              
+              Toast.show({
+                type: 'success',
+                text1: 'Deleted! 🗑️',
+                text2: 'Hot Take removed',
+                position: 'bottom',
+              });
+              
+              // Refresh feed
+              fetchHotTakes(true);
+            } catch (error) {
+              console.error('Error deleting hot take:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Failed to delete',
+                text2: 'Please try again',
+                position: 'bottom',
+              });
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // Initial load
   useEffect(() => {
     console.log('🏠 HomeScreen mounted');
@@ -226,10 +285,19 @@ export default function HomeScreen() {
 
   // Render Hot Take Card
   const renderHotTake = ({ item }: { item: HotTake }) => {
+    // Check if this Hot Take is trending
+    const trendingData = trendingTakes.find((t) => t.takeId === item.id);
+
     const handlePress = () => {
       console.log('🎬 Hot Take card pressed:', item.title);
       haptics.light();
-      navigation.navigate('HotTakeDetail' as never, { hotTake: item } as never);
+      (navigation as any).navigate('HotTakeDetail', { hotTake: item });
+    };
+
+    const handleLongPress = () => {
+      console.log('🗑️ Long press detected on:', item.title);
+      haptics.medium();
+      handleDeleteHotTake(item.id, item.author.id);
     };
 
     const handleLike = async (e: any) => {
@@ -269,10 +337,14 @@ export default function HomeScreen() {
       }
     };
 
+    // Check if this is the current user's Hot Take
+    const isOwnHotTake = item.author.id === userId;
+
     return (
       <TouchableOpacity
         style={styles.card}
         onPress={handlePress}
+        onLongPress={handleLongPress}
         activeOpacity={0.9}
       >
         {/* Thumbnail */}
@@ -286,6 +358,13 @@ export default function HomeScreen() {
         <View style={styles.playOverlay} pointerEvents="none">
           <Ionicons name="play-circle" size={64} color="rgba(255,255,255,0.95)" />
         </View>
+
+        {/* Delete Hint (only show on own Hot Takes) */}
+        {isOwnHotTake && (
+          <View style={styles.deleteHint}>
+            <Ionicons name="trash-outline" size={14} color="rgba(255, 255, 255, 0.8)" />
+          </View>
+        )}
 
         {/* Content */}
         <View style={styles.cardContent}>
@@ -332,6 +411,24 @@ export default function HomeScreen() {
             <TouchableOpacity style={styles.statButton}>
               <Ionicons name="share-outline" size={22} color="#FFFFFF" />
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.statButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                setSelectedTakeForCollection(item.id);
+              }}
+            >
+              <Ionicons name="folder-outline" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <View style={styles.statButton}>
+              <BookmarkButton
+                takeId={item.id}
+                size={22}
+                color="#FFFFFF"
+              />
+            </View>
           </View>
         </View>
       </TouchableOpacity>
@@ -404,6 +501,7 @@ export default function HomeScreen() {
   // List Footer (Loading More)
   const renderListFooter = () => {
     if (!loadingMore) return null;
+
     return (
       <View style={styles.footerLoader}>
         <ActivityIndicator size="small" color="#00FF9F" />
@@ -480,7 +578,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* OddsTicker */}
-      <OddsTicker games={games} />
+      <OddsTicker />
 
       {/* Hot Takes List */}
       <FlatList
@@ -502,6 +600,13 @@ export default function HomeScreen() {
         ListHeaderComponent={renderListHeader}
         ListFooterComponent={renderListFooter}
         ListEmptyComponent={renderEmpty}
+      />
+
+      {/* Add to Collection Sheet */}
+      <AddToCollectionSheet
+        visible={selectedTakeForCollection !== null}
+        onClose={() => setSelectedTakeForCollection(null)}
+        takeId={selectedTakeForCollection || ''}
       />
     </SafeAreaView>
   );
@@ -593,6 +698,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  deleteHint: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 12,
+    padding: 8,
+    zIndex: 10,
   },
   cardContent: {
     padding: 14,

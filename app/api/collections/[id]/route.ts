@@ -71,7 +71,15 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    return NextResponse.json({ collection });
+    // Add isOwner flag to response
+    const isOwner = collection.userId === dbUser?.id;
+
+    return NextResponse.json({ 
+      collection: {
+        ...collection,
+        isOwner,
+      }
+    });
   } catch (error) {
     console.error('[collection-get]:', error);
     return NextResponse.json({ error: 'Failed to fetch collection' }, { status: 500 });
@@ -131,7 +139,15 @@ export async function PATCH(
       },
     });
 
-    return NextResponse.json({ collection });
+    // Add isOwner flag to response
+    const isOwner = collection.userId === dbUser?.id;
+
+    return NextResponse.json({ 
+      collection: {
+        ...collection,
+        isOwner,
+      }
+    });
   } catch (error) {
     console.error('[collection-patch]:', error);
     return NextResponse.json({ error: 'Failed to update collection' }, { status: 500 });

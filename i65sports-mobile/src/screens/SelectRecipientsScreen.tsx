@@ -63,7 +63,9 @@ export default function SelectRecipientsScreen() {
   const sendToConversation = async (conversationId: string) => {
     try {
       const token = await getToken();
-      await axios.post(
+      console.log('📤 Sharing Hot Take to conversation:', conversationId);
+      
+      const response = await axios.post(
         `${API_URL}/conversations/${conversationId}/messages`,
         {
           content: `Shared: ${sharedTakeTitle}`,
@@ -75,6 +77,8 @@ export default function SelectRecipientsScreen() {
         }
       );
 
+      console.log('✅ Hot Take shared:', response.data);
+
       Toast.show({
         type: 'success',
         text1: 'Hot Take Shared! 🔥',
@@ -82,11 +86,16 @@ export default function SelectRecipientsScreen() {
       });
 
       navigation.goBack();
-    } catch (error) {
-      console.error('Error sharing:', error);
+    } catch (error: any) {
+      console.error('❌ Error sharing:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+      }
       Toast.show({
         type: 'error',
         text1: 'Failed to share',
+        text2: error.response?.data?.error || 'Please try again',
         position: 'bottom',
       });
     }

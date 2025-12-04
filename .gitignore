@@ -32,3 +32,6 @@ prisma/dev.db
 coverage/
 *.pem
 
+# Temporary video processing files
+tmp/
+

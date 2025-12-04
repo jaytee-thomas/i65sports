@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ScrollView,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
@@ -16,7 +17,9 @@ import { useAuth } from '@clerk/clerk-expo';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
 import Toast from 'react-native-toast-message';
-import { uploadHotTake } from '../services/upload';
+import { uploadHotTake, UploadProgress } from '../services/upload';
+
+// UploadHotTakeScreen - Screen for uploading or saving Hot Takes as drafts
 
 const API_URL = 'http://192.168.86.226:3000/api';
 
@@ -34,24 +37,47 @@ type RouteParams = {
 export default function UploadHotTakeScreen() {
   const route = useRoute<RouteProp<RouteParams, 'UploadHotTake'>>();
   const navigation = useNavigation();
-  const { videoUri, draftId, editMetadata } = route.params;
   const { getToken } = useAuth();
 
-  const [title, setTitle] = useState(route.params.title || '');
-  const [selectedSport, setSelectedSport] = useState(route.params.sport || 'Basketball');
+  // Capture route params in a ref on first render only to prevent re-renders
+  const paramsRef = useRef(route.params);
+  const params = paramsRef.current || {};
+
+  // Extract values once - these won't change even if route.params object reference changes
+  const videoUri = params.videoUri;
+  const draftId = params.draftId;
+  const editMetadata = params.editMetadata;
+
+  // Initialize state only once using lazy initialization - useState initializer runs once
+  const [title, setTitle] = useState(() => params.title || '');
+  const [selectedSport, setSelectedSport] = useState(() => params.sport || 'Basketball');
   const [visibility, setVisibility] = useState<'PUBLIC' | 'PRIVATE' | 'FRIENDS'>('PUBLIC');
-  const [scheduledFor, setScheduledFor] = useState<Date | null>(
-    route.params.scheduledFor ? new Date(route.params.scheduledFor) : null
+  const [scheduledFor, setScheduledFor] = useState<Date | null>(() =>
+    params.scheduledFor ? new Date(params.scheduledFor) : null
   );
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  
+  // Track if we've already saved to prevent duplicate saves
+  const hasSavedRef = useRef(false);
+  const hasNavigatedRef = useRef(false);
 
-  const sports = ['Basketball', 'Football', 'Baseball', 'Soccer', 'Hockey', 'Other'];
+  // Memoize sports array to prevent recreation on each render
+  const sports = useMemo(() => ['Basketball', 'Football', 'Baseball', 'Soccer', 'Hockey', 'Other'], []);
 
   const saveAsDraft = async () => {
+    // Prevent duplicate saves or navigation
+    if (hasSavedRef.current || isSavingDraft || hasNavigatedRef.current) {
+      console.log('⚠️ Save already in progress or completed');
+      return;
+    }
+
+    hasSavedRef.current = true;
+    setIsSavingDraft(true);
+
     try {
-      setIsSavingDraft(true);
       const token = await getToken();
 
       const draftData = {
@@ -63,6 +89,8 @@ export default function UploadHotTakeScreen() {
         editMetadata,
       };
 
+      console.log('💾 Saving draft...', { draftId, hasTitle: !!title.trim() });
+
       if (draftId) {
         // Update existing draft
         await axios.patch(`${API_URL}/drafts/${draftId}`, draftData, {
@@ -71,8 +99,10 @@ export default function UploadHotTakeScreen() {
 
         Toast.show({
           type: 'success',
-          text1: 'Draft updated! 💾',
-          position: 'bottom',
+          text1: 'Draft Updated! 💾',
+          text2: 'Your Hot Take has been saved to drafts',
+          position: 'top',
+          visibilityTime: 2000,
         });
       } else {
         // Create new draft
@@ -82,21 +112,40 @@ export default function UploadHotTakeScreen() {
 
         Toast.show({
           type: 'success',
-          text1: 'Saved as draft! 💾',
-          position: 'bottom',
+          text1: 'Draft Saved! 💾',
+          text2: 'Your Hot Take has been saved to drafts',
+          position: 'top',
+          visibilityTime: 2000,
         });
       }
 
-      navigation.goBack();
+      console.log('✅ Draft saved successfully');
+
+      // Set navigation guard RIGHT BEFORE navigation
+      hasNavigatedRef.current = true;
+
+      // Navigate immediately after success
+      if (navigation.canGoBack()) {
+        console.log('🔙 Navigating back');
+        navigation.goBack();
+      } else {
+        console.log('🏠 Navigating to Home');
+        (navigation as any).navigate('Home');
+      }
     } catch (error) {
-      console.error('Error saving draft:', error);
+      console.error('❌ Error saving draft:', error);
+      
+      // Reset states on error to allow retry
+      hasSavedRef.current = false;
+      setIsSavingDraft(false);
+      
       Toast.show({
         type: 'error',
-        text1: 'Failed to save draft',
-        position: 'bottom',
+        text1: 'Save Failed',
+        text2: error instanceof Error ? error.message : 'Could not save draft. Please try again.',
+        position: 'top',
+        visibilityTime: 3000,
       });
-    } finally {
-      setIsSavingDraft(false);
     }
   };
 
@@ -111,22 +160,33 @@ export default function UploadHotTakeScreen() {
     }
 
     try {
+      console.log('📤 Starting publish process...');
       setIsUploading(true);
+      setUploadProgress(0);
+      
       const token = await getToken();
+      console.log('🔐 Got auth token:', token ? 'Yes' : 'No');
 
       // Use existing upload service with sport and editMetadata
+      console.log('📹 Calling uploadHotTake...');
       await uploadHotTake(
         videoUri,
         title,
         undefined, // venue
-        undefined, // onProgress
+        (progress: UploadProgress) => {
+          console.log(`📊 Upload progress: ${progress.percentage}%`);
+          setUploadProgress(progress.percentage);
+        },
         token || undefined,
         selectedSport,
         editMetadata
       );
 
+      console.log('✅ Upload completed!');
+
       // If this was a draft, delete it
       if (draftId) {
+        console.log('🗑️ Deleting draft...');
         await axios.delete(`${API_URL}/drafts/${draftId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -136,18 +196,37 @@ export default function UploadHotTakeScreen() {
         type: 'success',
         text1: 'Hot Take posted! 🔥',
         position: 'bottom',
+        visibilityTime: 2000,
       });
 
-      navigation.navigate('Home' as never);
-    } catch (error) {
-      console.error('Upload error:', error);
+      // Small delay to let user see the success message
+      setTimeout(() => {
+        navigation.navigate('Home' as never);
+      }, 500);
+    } catch (error: any) {
+      console.error('❌ Upload error:', error);
+      
+      // Show specific error message
+      const errorMessage = error.message || 'Failed to post. Please try again.';
+      
+      Alert.alert(
+        'Upload Failed',
+        errorMessage,
+        [
+          { text: 'OK', style: 'default' }
+        ]
+      );
+
       Toast.show({
         type: 'error',
-        text1: 'Failed to post',
+        text1: 'Upload Failed',
+        text2: errorMessage,
         position: 'bottom',
+        visibilityTime: 4000,
       });
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -178,16 +257,33 @@ export default function UploadHotTakeScreen() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="close" size={28} color="#FFFFFF" />
+        <TouchableOpacity onPress={() => navigation.goBack()} disabled={isUploading}>
+          <Ionicons name="close" size={28} color={isUploading ? "#8892A6" : "#FFFFFF"} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {draftId ? 'Edit Draft' : 'New Hot Take'}
         </Text>
-        <View style={{ width: 28 }} />
+        <View style={{ width: 28 }}>
+          {isUploading && <ActivityIndicator size="small" color="#00FF9F" />}
+        </View>
       </View>
 
-      <ScrollView style={styles.content}>
+      {/* Upload Progress Overlay */}
+      {isUploading && (
+        <View style={styles.uploadOverlay}>
+          <View style={styles.uploadCard}>
+            <ActivityIndicator size="large" color="#00FF9F" />
+            <Text style={styles.uploadText}>Uploading Your Hot Take...</Text>
+            <Text style={styles.uploadPercentage}>{uploadProgress}%</Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+            </View>
+            <Text style={styles.uploadHint}>This may take a moment</Text>
+          </View>
+        </View>
+      )}
+
+      <ScrollView style={styles.content} scrollEnabled={!isUploading}>
         {/* Video Preview */}
         <View style={styles.videoPreview}>
           <View style={styles.videoPlaceholder}>
@@ -211,6 +307,7 @@ export default function UploadHotTakeScreen() {
             value={title}
             onChangeText={setTitle}
             maxLength={100}
+            editable={!isUploading}
           />
           <Text style={styles.charCount}>{title.length}/100</Text>
         </View>
@@ -218,7 +315,7 @@ export default function UploadHotTakeScreen() {
         {/* Sport Selector */}
         <View style={styles.section}>
           <Text style={styles.label}>Sport</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} scrollEnabled={!isUploading}>
             <View style={styles.sportOptions}>
               {sports.map((sport) => (
                 <TouchableOpacity
@@ -227,7 +324,8 @@ export default function UploadHotTakeScreen() {
                     styles.sportOption,
                     selectedSport === sport && styles.sportOptionActive,
                   ]}
-                  onPress={() => setSelectedSport(sport)}
+                  onPress={() => !isUploading && setSelectedSport(sport)}
+                  disabled={isUploading}
                 >
                   <Text
                     style={[
@@ -252,7 +350,8 @@ export default function UploadHotTakeScreen() {
                 styles.visibilityOption,
                 visibility === 'PUBLIC' && styles.visibilityOptionActive,
               ]}
-              onPress={() => setVisibility('PUBLIC')}
+              onPress={() => !isUploading && setVisibility('PUBLIC')}
+              disabled={isUploading}
             >
               <Ionicons
                 name="globe-outline"
@@ -274,7 +373,8 @@ export default function UploadHotTakeScreen() {
                 styles.visibilityOption,
                 visibility === 'FRIENDS' && styles.visibilityOptionActive,
               ]}
-              onPress={() => setVisibility('FRIENDS')}
+              onPress={() => !isUploading && setVisibility('FRIENDS')}
+              disabled={isUploading}
             >
               <Ionicons
                 name="people-outline"
@@ -296,7 +396,8 @@ export default function UploadHotTakeScreen() {
                 styles.visibilityOption,
                 visibility === 'PRIVATE' && styles.visibilityOptionActive,
               ]}
-              onPress={() => setVisibility('PRIVATE')}
+              onPress={() => !isUploading && setVisibility('PRIVATE')}
+              disabled={isUploading}
             >
               <Ionicons
                 name="lock-closed-outline"
@@ -320,7 +421,8 @@ export default function UploadHotTakeScreen() {
           <Text style={styles.label}>Schedule Post (Optional)</Text>
           <TouchableOpacity
             style={styles.dateButton}
-            onPress={() => setShowDatePicker(true)}
+            onPress={() => !isUploading && setShowDatePicker(true)}
+            disabled={isUploading}
           >
             <Ionicons name="calendar-outline" size={20} color="#00FF9F" />
             <Text style={styles.dateButtonText}>
@@ -328,7 +430,7 @@ export default function UploadHotTakeScreen() {
                 ? scheduledFor.toLocaleString()
                 : 'Post immediately'}
             </Text>
-            {scheduledFor && (
+            {scheduledFor && !isUploading && (
               <TouchableOpacity
                 onPress={() => setScheduledFor(null)}
                 style={styles.clearDateButton}
@@ -358,9 +460,9 @@ export default function UploadHotTakeScreen() {
       {/* Action Buttons */}
       <View style={styles.actions}>
         <TouchableOpacity
-          style={styles.draftButton}
+          style={[styles.draftButton, isUploading && styles.buttonDisabled]}
           onPress={saveAsDraft}
-          disabled={isSavingDraft}
+          disabled={isSavingDraft || isUploading}
         >
           <Ionicons name="document-outline" size={20} color="#FFFFFF" />
           <Text style={styles.draftButtonText}>
@@ -371,19 +473,19 @@ export default function UploadHotTakeScreen() {
         <TouchableOpacity
           style={[
             styles.publishButton,
-            !title.trim() && styles.publishButtonDisabled,
+            (!title.trim() || isUploading) && styles.publishButtonDisabled,
           ]}
           onPress={scheduledFor ? schedulePost : publishNow}
           disabled={!title.trim() || isUploading}
         >
           <Text style={styles.publishButtonText}>
             {isUploading
-              ? 'Posting...'
+              ? `${uploadProgress}%`
               : scheduledFor
               ? 'Schedule'
               : 'Post Now'}
           </Text>
-          <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+          {!isUploading && <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -408,6 +510,56 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  uploadOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(10, 14, 39, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  uploadCard: {
+    backgroundColor: '#1A1F3A',
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    width: '80%',
+    maxWidth: 300,
+  },
+  uploadText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginTop: 20,
+    textAlign: 'center',
+  },
+  uploadPercentage: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#00FF9F',
+    marginTop: 16,
+  },
+  progressBar: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#2A3154',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginTop: 16,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#00FF9F',
+  },
+  uploadHint: {
+    fontSize: 13,
+    color: '#8892A6',
+    marginTop: 12,
+    textAlign: 'center',
   },
   content: {
     flex: 1,
@@ -573,10 +725,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#3A4166',
     opacity: 0.5,
   },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
   publishButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
   },
 });
-

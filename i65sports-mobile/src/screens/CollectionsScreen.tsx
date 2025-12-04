@@ -75,6 +75,15 @@ export default function CollectionsScreen() {
     }
   };
 
+  const handleBackPress = () => {
+    // Try to go back first, if not possible navigate to Home tab
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Home' as never);
+    }
+  };
+
   const renderCollection = ({ item }: { item: Collection }) => {
     const previewImages = item.items.slice(0, 3);
 
@@ -82,9 +91,9 @@ export default function CollectionsScreen() {
       <TouchableOpacity
         style={styles.collectionCard}
         onPress={() =>
-          navigation.navigate('CollectionDetail' as never, {
+          (navigation as any).navigate('CollectionDetail', {
             collectionId: item.id,
-          } as never)
+          })
         }
       >
         {/* Preview Grid */}
@@ -131,9 +140,9 @@ export default function CollectionsScreen() {
     <TouchableOpacity
       style={styles.bookmarkCard}
       onPress={() =>
-        navigation.navigate('HotTakeDetail' as never, {
+        (navigation as any).navigate('HotTakeDetail', {
           hotTake: item.hotTake,
-        } as never)
+        })
       }
     >
       <View style={styles.bookmarkThumbnail}>
@@ -162,16 +171,26 @@ export default function CollectionsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+      {/* Header with Back Button */}
       <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={handleBackPress}
+        >
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        
         <Text style={styles.headerTitle}>Library</Text>
-        {activeTab === 'collections' && (
+        
+        {activeTab === 'collections' ? (
           <TouchableOpacity
             style={styles.createButton}
             onPress={() => navigation.navigate('CreateCollection' as never)}
           >
             <Ionicons name="add" size={24} color="#00FF9F" />
           </TouchableOpacity>
+        ) : (
+          <View style={styles.createButton} />
         )}
       </View>
 
@@ -278,10 +297,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
   },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1A1F3A',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    flex: 1,
+    marginLeft: 12,
   },
   createButton: {
     width: 40,

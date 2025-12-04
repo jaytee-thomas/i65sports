@@ -41,6 +41,9 @@ model User {
   collections          Collection[]
   collectionFollowers  CollectionFollower[]
   bookmarks            Bookmark[]
+  
+  // Drafts
+  drafts               Draft[]
 }
 
 model HotTake {
@@ -86,6 +89,28 @@ model HotTake {
   @@index([recordedAtVenue, createdAt])
   @@index([gameId, shotAt])
   @@index([league, createdAt])
+}
+
+model Draft {
+  id            String     @id @default(cuid())
+  userId        String
+  title         String?
+  videoUri      String     // Local video URI
+  thumbnailUri  String?
+  sport         String?
+  venue         String?
+  venueName     String?
+  visibility    Visibility @default(PUBLIC)
+  scheduledFor  DateTime?
+  editMetadata  Json?      // Store video editing metadata
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([scheduledFor])
+  @@map("drafts")
 }
 
 model Reaction {
@@ -176,6 +201,12 @@ enum TakeStatus {
   PUBLISHED
   FLAGGED
   REMOVED
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+  FRIENDS
 }
 
 model Notification {

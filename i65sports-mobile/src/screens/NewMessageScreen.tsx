@@ -77,6 +77,8 @@ export default function NewMessageScreen() {
       const type = selectedUsers.length === 1 ? 'DIRECT' : 'GROUP';
       const participantIds = selectedUsers.map((u) => u.id);
 
+      console.log('📤 Creating conversation:', { type, participantIds });
+
       const response = await axios.post(
         `${API_URL}/conversations`,
         {
@@ -91,19 +93,32 @@ export default function NewMessageScreen() {
         }
       );
 
+      console.log('✅ Conversation created:', response.data);
+
       const conversation = response.data.conversation;
 
-      // Navigate to chat
-      navigation.navigate('Chat' as never, {
+      if (!conversation || !conversation.id) {
+        console.error('❌ Invalid conversation response:', response.data);
+        return;
+      }
+
+      // Navigate to chat with proper typing
+      (navigation as any).navigate('Chat', {
         conversationId: conversation.id,
         conversationName:
           type === 'DIRECT'
             ? `@${selectedUsers[0].username}`
-            : conversation.name,
+            : conversation.name || `Group with ${selectedUsers.map((u) => u.username).join(', ')}`,
         isGroup: type === 'GROUP',
-      } as never);
-    } catch (error) {
-      console.error('Error creating conversation:', error);
+      });
+    } catch (error: any) {
+      console.error('❌ Error creating conversation:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+      }
+      // Show error to user
+      alert(error.response?.data?.error || 'Failed to create conversation. Please try again.');
     } finally {
       setIsCreating(false);
     }
