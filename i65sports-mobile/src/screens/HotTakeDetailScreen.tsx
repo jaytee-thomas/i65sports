@@ -310,6 +310,13 @@ export default function HotTakeDetailScreen() {
     }
   };
 
+  const handleShareToDM = () => {
+    navigation.navigate('SelectRecipients' as never, {
+      sharedTakeId: hotTake.id,
+      sharedTakeTitle: hotTake.title || 'Hot Take',
+    } as never);
+  };
+
   const handleReaction = (emoji: string) => {
     const gameId = hotTake.id;
     
@@ -460,7 +467,29 @@ export default function HotTakeDetailScreen() {
               <Text style={styles.actionText}>Live Chat</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => {
+                Alert.alert(
+                  'Share Hot Take',
+                  'Choose how to share',
+                  [
+                    {
+                      text: 'Share via DM',
+                      onPress: handleShareToDM,
+                    },
+                    {
+                      text: 'Share externally',
+                      onPress: handleShare,
+                    },
+                    {
+                      text: 'Cancel',
+                      style: 'cancel',
+                    },
+                  ]
+                );
+              }}
+            >
               <Ionicons name="share-outline" size={32} color="#FFFFFF" />
               <Text style={styles.actionText}>Share</Text>
             </TouchableOpacity>

@@ -110,6 +110,78 @@ class SocketService {
     this.socket.off(event, callback);
   }
 
+  // Join conversation room
+  joinConversation(conversationId: string) {
+    if (!this.socket) {
+      console.error('Socket not connected');
+      return;
+    }
+    console.log('💬 Joining conversation:', conversationId);
+    this.socket.emit('join-conversation', conversationId);
+  }
+
+  // Leave conversation room
+  leaveConversation(conversationId: string) {
+    if (!this.socket) return;
+    console.log('👋 Leaving conversation:', conversationId);
+    this.socket.emit('leave-conversation', conversationId);
+  }
+
+  // Send DM
+  sendDirectMessage(data: {
+    conversationId: string;
+    senderId: string;
+    senderUsername: string;
+    content: string;
+    type: 'TEXT' | 'HOTTAKE';
+    sharedTakeId?: string;
+  }) {
+    if (!this.socket) {
+      console.error('Socket not connected');
+      return;
+    }
+    console.log('💬 Sending message:', data);
+    this.socket.emit('send-message', data);
+  }
+
+  // Typing indicator
+  sendTypingDM(conversationId: string, userId: string, username: string) {
+    if (!this.socket) return;
+    this.socket.emit('typing-dm', { conversationId, userId, username });
+  }
+
+  stopTypingDM(conversationId: string, userId: string) {
+    if (!this.socket) return;
+    this.socket.emit('stop-typing-dm', { conversationId, userId });
+  }
+
+  // Mark as read
+  markMessageRead(conversationId: string, messageId: string, userId: string) {
+    if (!this.socket) return;
+    this.socket.emit('mark-read', { conversationId, messageId, userId });
+  }
+
+  // Listen to DM events
+  onDirectMessage(callback: (data: any) => void) {
+    if (!this.socket) return;
+    this.socket.on('message-received', callback);
+  }
+
+  onUserTypingDM(callback: (data: any) => void) {
+    if (!this.socket) return;
+    this.socket.on('user-typing-dm', callback);
+  }
+
+  onUserStopTypingDM(callback: (data: any) => void) {
+    if (!this.socket) return;
+    this.socket.on('user-stop-typing-dm', callback);
+  }
+
+  onMessageRead(callback: (data: any) => void) {
+    if (!this.socket) return;
+    this.socket.on('message-read', callback);
+  }
+
   getSocket() {
     return this.socket;
   }

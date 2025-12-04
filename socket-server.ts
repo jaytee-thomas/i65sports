@@ -71,6 +71,63 @@ io.on('connection', (socket) => {
     socket.to(`game:${data.gameId}`).emit('user-typing', data);
   });
 
+  // Join conversation room
+  socket.on('join-conversation', (conversationId: string) => {
+    socket.join(`conversation:${conversationId}`);
+    console.log(`💬 ${socket.id} joined conversation:${conversationId}`);
+  });
+
+  // Leave conversation room
+  socket.on('leave-conversation', (conversationId: string) => {
+    socket.leave(`conversation:${conversationId}`);
+    console.log(`👋 ${socket.id} left conversation:${conversationId}`);
+  });
+
+  // Send direct message
+  socket.on('send-message', (data: {
+    conversationId: string;
+    senderId: string;
+    senderUsername: string;
+    content: string;
+    type: 'TEXT' | 'HOTTAKE';
+    sharedTakeId?: string;
+  }) => {
+    console.log('💬 New message:', data);
+    
+    // Broadcast to everyone in conversation
+    io.to(`conversation:${data.conversationId}`).emit('message-received', {
+      ...data,
+      id: `${socket.id}-${Date.now()}`,
+      timestamp: new Date(),
+    });
+  });
+
+  // Typing indicator for DMs
+  socket.on('typing-dm', (data: {
+    conversationId: string;
+    userId: string;
+    username: string;
+  }) => {
+    socket.to(`conversation:${data.conversationId}`).emit('user-typing-dm', data);
+  });
+
+  // Stop typing
+  socket.on('stop-typing-dm', (data: {
+    conversationId: string;
+    userId: string;
+  }) => {
+    socket.to(`conversation:${data.conversationId}`).emit('user-stop-typing-dm', data);
+  });
+
+  // Mark message as read
+  socket.on('mark-read', (data: {
+    conversationId: string;
+    messageId: string;
+    userId: string;
+  }) => {
+    io.to(`conversation:${data.conversationId}`).emit('message-read', data);
+  });
+
   socket.on('disconnect', () => {
     console.log('🔌 Client disconnected:', socket.id);
   });

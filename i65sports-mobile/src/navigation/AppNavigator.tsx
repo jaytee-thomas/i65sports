@@ -20,6 +20,10 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import SignInScreen from '../screens/SignInScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 import LiveGameScreen from '../screens/LiveGameScreen';
+import MessagesScreen from '../screens/MessagesScreen';
+import ChatScreen from '../screens/ChatScreen';
+import NewMessageScreen from '../screens/NewMessageScreen';
+import SelectRecipientsScreen from '../screens/SelectRecipientsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -35,6 +39,8 @@ function MainTabs() {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Camera') {
             iconName = focused ? 'camera' : 'camera-outline';
+          } else if (route.name === 'Messages') {
+            iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
           } else if (route.name === 'Notifications') {
             iconName = focused ? 'notifications' : 'notifications-outline';
           } else if (route.name === 'Profile') {
@@ -81,6 +87,13 @@ function MainTabs() {
         options={{
           headerShown: false,
           tabBarStyle: { display: 'none' },
+        }}
+      />
+      <Tab.Screen
+        name="Messages"
+        component={MessagesScreen}
+        options={{
+          headerShown: false,
         }}
       />
       <Tab.Screen
@@ -183,6 +196,32 @@ export default function AppNavigator() {
               name="LiveGame"
               component={LiveGameScreen}
               options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Messages"
+              component={MessagesScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Chat"
+              component={ChatScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="NewMessage"
+              component={NewMessageScreen}
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="SelectRecipients"
+              component={SelectRecipientsScreen}
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+              }}
             />
           </>
         ) : (

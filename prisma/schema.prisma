@@ -31,6 +31,11 @@ model User {
   
   // Check-in relationships
   checkIns     CheckIn[]
+  
+  // Messaging relationships
+  conversationParticipants ConversationParticipant[]
+  sentMessages             Message[] @relation("SentMessages")
+  messageReadReceipts      MessageReadReceipt[]
 }
 
 model HotTake {
@@ -67,6 +72,7 @@ model HotTake {
   game      Game?      @relation(fields: [gameId], references: [id])
   reactions Reaction[]
   notifications Notification[]
+  sharedInMessages Message[]
   
   // Indexes for performance
   @@index([createdAt])
@@ -204,6 +210,80 @@ model CheckIn {
   @@index([venueId, checkedInAt])
   @@index([userId, checkedInAt])
   @@map("check_ins")
+}
+
+model Conversation {
+  id          String   @id @default(cuid())
+  type        ConversationType @default(DIRECT)
+  name        String?  // For group chats
+  imageUrl    String?  // For group chats
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  participants ConversationParticipant[]
+  messages     Message[]
+  
+  @@map("conversations")
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+model ConversationParticipant {
+  id             String   @id @default(cuid())
+  conversationId String
+  userId         String
+  joinedAt       DateTime @default(now())
+  lastReadAt     DateTime?
+  
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String
+  type           MessageType @default(TEXT)
+  sharedTakeId   String?  // For sharing Hot Takes
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  sharedTake   HotTake?     @relation(fields: [sharedTakeId], references: [id], onDelete: SetNull)
+  readReceipts MessageReadReceipt[]
+  
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
+
+enum MessageType {
+  TEXT
+  HOTTAKE
+  SYSTEM
+}
+
+model MessageReadReceipt {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  readAt    DateTime @default(now())
+  
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([messageId, userId])
+  @@index([userId])
+  @@map("message_read_receipts")
 }
 
 // REMOVED: Article, FanReel, Reply, RecordingDraft models

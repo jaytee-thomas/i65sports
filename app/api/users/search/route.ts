@@ -9,63 +9,45 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const dbUser = await prisma.user.findUnique({
-      where: { clerkId: clerkUser.id },
-    });
-
-    if (!dbUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q') || '';
 
-    if (!query.trim()) {
+    if (query.trim().length === 0) {
       return NextResponse.json({ users: [] });
     }
 
     const users = await prisma.user.findMany({
       where: {
         OR: [
-          { username: { contains: query, mode: 'insensitive' } },
-          { email: { contains: query, mode: 'insensitive' } },
-          { bio: { contains: query, mode: 'insensitive' } },
+          {
+            username: {
+              contains: query,
+              mode: 'insensitive',
+            },
+          },
+          {
+            email: {
+              contains: query,
+              mode: 'insensitive',
+            },
+          },
         ],
+        NOT: {
+          clerkId: clerkUser.id, // Exclude current user
+        },
       },
       select: {
         id: true,
         username: true,
-        email: true,
-        bio: true,
         avatarUrl: true,
-        _count: {
-          select: {
-            hotTakes: true,
-            followers: true,
-            following: true,
-          },
-        },
+        bio: true,
       },
       take: 20,
     });
 
-    // Check if current user follows each result
-    const followingIds = await prisma.follow.findMany({
-      where: { followerId: dbUser.id },
-      select: { followingId: true },
-    });
-
-    const followingSet = new Set(followingIds.map(f => f.followingId));
-
-    const usersWithFollowStatus = users.map(user => ({
-      ...user,
-      isFollowing: followingSet.has(user.id),
-    }));
-
-    return NextResponse.json({ users: usersWithFollowStatus });
+    return NextResponse.json({ users });
   } catch (error) {
-    console.error('Error searching users:', error);
+    console.error('[users-search]:', error);
     return NextResponse.json({ error: 'Failed to search users' }, { status: 500 });
   }
 }
-
