@@ -25,6 +25,8 @@ import { LiveReactionBar } from '../components/LiveReactionBar';
 import { FloatingEmojiContainer } from '../components/FloatingEmojiContainer';
 import { LiveChatRoom } from '../components/LiveChatRoom';
 import { TrendingBadge } from '../components/TrendingBadge';
+import { BookmarkButton } from '../components/BookmarkButton';
+import { AddToCollectionSheet } from '../components/AddToCollectionSheet';
 
 const { width, height } = Dimensions.get('window');
 const API_URL = 'http://192.168.86.226:3000/api';
@@ -89,6 +91,7 @@ export default function HotTakeDetailScreen() {
   const [reactionCounts, setReactionCounts] = useState<{ [emoji: string]: number }>({});
   const [floatingEmojis, setFloatingEmojis] = useState<Array<{ emoji: string; timestamp: number }>>([]);
   const [trendingLabel, setTrendingLabel] = useState('');
+  const [showAddToCollection, setShowAddToCollection] = useState(false);
 
   useEffect(() => {
     loadComments();
@@ -493,6 +496,27 @@ export default function HotTakeDetailScreen() {
               <Ionicons name="share-outline" size={32} color="#FFFFFF" />
               <Text style={styles.actionText}>Share</Text>
             </TouchableOpacity>
+
+            {/* Bookmark Button */}
+            <View style={styles.actionButton}>
+              <BookmarkButton
+                takeId={hotTake.id}
+                size={32}
+                onToggle={(bookmarked) => {
+                  console.log('Bookmarked:', bookmarked);
+                }}
+              />
+              <Text style={styles.actionText}>Save</Text>
+            </View>
+
+            {/* Add to Collection */}
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => setShowAddToCollection(true)}
+            >
+              <Ionicons name="folder-outline" size={32} color="#FFFFFF" />
+              <Text style={styles.actionText}>Collection</Text>
+            </TouchableOpacity>
           </View>
         </Animated.View>
       )}
@@ -581,6 +605,16 @@ export default function HotTakeDetailScreen() {
           </View>
         </KeyboardAvoidingView>
       )}
+
+      {/* Add to Collection Sheet */}
+      <AddToCollectionSheet
+        visible={showAddToCollection}
+        onClose={() => setShowAddToCollection(false)}
+        takeId={hotTake.id}
+        onCreateNew={() => {
+          navigation.navigate('CreateCollection' as never);
+        }}
+      />
     </SafeAreaView>
   );
 }

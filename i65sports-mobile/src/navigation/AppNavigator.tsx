@@ -24,6 +24,9 @@ import MessagesScreen from '../screens/MessagesScreen';
 import ChatScreen from '../screens/ChatScreen';
 import NewMessageScreen from '../screens/NewMessageScreen';
 import SelectRecipientsScreen from '../screens/SelectRecipientsScreen';
+import CollectionsScreen from '../screens/CollectionsScreen';
+import CollectionDetailScreen from '../screens/CollectionDetailScreen';
+import CreateCollectionScreen from '../screens/CreateCollectionScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -218,6 +221,24 @@ export default function AppNavigator() {
             <Stack.Screen
               name="SelectRecipients"
               component={SelectRecipientsScreen}
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="Collections"
+              component={CollectionsScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="CollectionDetail"
+              component={CollectionDetailScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="CreateCollection"
+              component={CreateCollectionScreen}
               options={{
                 presentation: 'modal',
                 headerShown: false,

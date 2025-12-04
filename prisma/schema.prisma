@@ -36,6 +36,11 @@ model User {
   conversationParticipants ConversationParticipant[]
   sentMessages             Message[] @relation("SentMessages")
   messageReadReceipts      MessageReadReceipt[]
+  
+  // Collections and Bookmarks
+  collections          Collection[]
+  collectionFollowers  CollectionFollower[]
+  bookmarks            Bookmark[]
 }
 
 model HotTake {
@@ -73,6 +78,8 @@ model HotTake {
   reactions Reaction[]
   notifications Notification[]
   sharedInMessages Message[]
+  collectionItems CollectionItem[]
+  bookmarks       Bookmark[]
   
   // Indexes for performance
   @@index([createdAt])
@@ -284,6 +291,70 @@ model MessageReadReceipt {
   @@unique([messageId, userId])
   @@index([userId])
   @@map("message_read_receipts")
+}
+
+model Collection {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isPublic    Boolean  @default(false)
+  coverImage  String?  // URL to cover image
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items      CollectionItem[]
+  followers  CollectionFollower[]
+  
+  @@index([userId])
+  @@index([isPublic])
+  @@map("collections")
+}
+
+model CollectionItem {
+  id           String   @id @default(cuid())
+  collectionId String
+  takeId       String
+  order        Int      @default(0)
+  addedAt      DateTime @default(now())
+  
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  hotTake    HotTake    @relation(fields: [takeId], references: [id], onDelete: Cascade)
+  
+  @@unique([collectionId, takeId])
+  @@index([collectionId])
+  @@index([takeId])
+  @@map("collection_items")
+}
+
+model CollectionFollower {
+  id           String   @id @default(cuid())
+  collectionId String
+  userId       String
+  followedAt   DateTime @default(now())
+  
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([collectionId, userId])
+  @@index([userId])
+  @@map("collection_followers")
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  takeId    String
+  createdAt DateTime @default(now())
+  
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hotTake HotTake @relation(fields: [takeId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, takeId])
+  @@index([userId])
+  @@index([takeId])
+  @@map("bookmarks")
 }
 
 // REMOVED: Article, FanReel, Reply, RecordingDraft models
