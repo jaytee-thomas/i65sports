@@ -7,6 +7,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { latitude, longitude } = body;
 
+    console.log('[venue-detect] Received coordinates:', { latitude, longitude });
+
     if (
       typeof latitude !== "number" ||
       typeof longitude !== "number" ||
@@ -19,8 +21,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Fetch all venues from database
-    const venues = await prisma.venue.findMany({
+    // Fetch all venues from database (NOTE: Model name is 'venues' not 'venue')
+    const venues = await (prisma as any).venues.findMany({
       select: {
         id: true,
         name: true,
@@ -33,6 +35,18 @@ export async function POST(request: Request) {
       },
     });
 
+    console.log('[venue-detect] Found venues in database:', venues.length);
+
+    if (venues.length === 0) {
+      console.warn('[venue-detect] No venues in database - database may need seeding');
+      return NextResponse.json({
+        atVenue: false,
+        venue: null,
+        distance: null,
+        message: 'No venues in database',
+      });
+    }
+
     // Find nearest venue within 500m
     const result = findNearestVenue(
       { latitude, longitude },
@@ -41,12 +55,15 @@ export async function POST(request: Request) {
     );
 
     if (!result) {
+      console.log('[venue-detect] No venue found within 500m');
       return NextResponse.json({
         atVenue: false,
         venue: null,
         distance: null,
       });
     }
+
+    console.log('[venue-detect] Found venue:', result.venue.name, 'Distance:', result.distance, 'm');
 
     // Try to match venue to an active game from odds API
     let activeGame = null;
@@ -55,21 +72,29 @@ export async function POST(request: Request) {
       const oddsResponse = await fetch(
         `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/odds?ticker=1`
       );
-      const oddsData = await oddsResponse.json();
+      
+      if (oddsResponse.ok) {
+        const oddsData = await oddsResponse.json();
 
-      if (oddsData.items) {
-        // Try to match venue team to games
-        // This is simplified - you'll want to enhance this matching logic
-        activeGame = oddsData.items.find(
-          (game: any) =>
-            (result.venue.team && 
-             (game.home.includes(result.venue.team.split(" ").pop()) ||
-              game.away.includes(result.venue.team.split(" ").pop()))) ||
-            game.league === result.venue.sport
-        );
+        if (oddsData.items) {
+          // Try to match venue team to games
+          // This is simplified - you'll want to enhance this matching logic
+          activeGame = oddsData.items.find(
+            (game: any) =>
+              (result.venue.team && 
+               (game.home.includes(result.venue.team.split(" ").pop()) ||
+                game.away.includes(result.venue.team.split(" ").pop()))) ||
+              game.league === result.venue.sport
+          );
+          
+          if (activeGame) {
+            console.log('[venue-detect] Matched active game:', activeGame);
+          }
+        }
       }
     } catch (error) {
       console.error("[venue-detect] Failed to fetch active games:", error);
+      // Continue without active game data
     }
 
     return NextResponse.json({
@@ -88,7 +113,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("[venue-detect] Error:", error);
     return NextResponse.json(
-      { error: "Venue detection failed" },
+      { error: "Venue detection failed", details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

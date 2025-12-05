@@ -31,7 +31,7 @@ interface Collection {
   description?: string;
   isPublic: boolean;
   userId: string;
-  isOwner?: boolean; // Added from backend
+  isOwner?: boolean;
   user: {
     id: string;
     username: string;
@@ -62,7 +62,7 @@ interface Collection {
 
 export default function CollectionDetailScreen() {
   const route = useRoute<RouteProp<RouteParams, 'CollectionDetail'>>();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { collectionId } = route.params;
   const { getToken } = useAuth();
   const { user } = useUser();
@@ -85,12 +85,8 @@ export default function CollectionDetailScreen() {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
+      console.log('✅ Collection loaded:', response.data.collection);
       setCollection(response.data.collection);
-      
-      // DEBUG: Check owner status
-      console.log('🔍 Collection userId:', response.data.collection.userId);
-      console.log('🔍 Collection isOwner:', response.data.collection.isOwner);
-      console.log('🔍 Current user?.id:', user?.id);
     } catch (error) {
       console.error('Error loading collection:', error);
       Toast.show({
@@ -131,6 +127,7 @@ export default function CollectionDetailScreen() {
           onPress: async () => {
             try {
               const token = await getToken();
+
               await axios.delete(`${API_URL}/collections/${collectionId}`, {
                 headers: { Authorization: `Bearer ${token}` },
               });
@@ -201,7 +198,7 @@ export default function CollectionDetailScreen() {
       <TouchableOpacity
         style={styles.hotTakeCard}
         onPress={() =>
-          (navigation as any).navigate('HotTakeDetail', {
+          navigation.navigate('HotTakeDetail', {
             hotTake: item.hotTake,
           })
         }
@@ -211,22 +208,22 @@ export default function CollectionDetailScreen() {
         </View>
         <View style={styles.hotTakeInfo}>
           <Text style={styles.hotTakeTitle} numberOfLines={2}>
-            {item.hotTake.title}
+            {item.hotTake?.title || 'Untitled'}
           </Text>
           <Text style={styles.hotTakeAuthor}>
-            @{item.hotTake.author.username}
+            @{item.hotTake?.author?.username || 'Unknown'}
           </Text>
           <View style={styles.hotTakeStats}>
             <View style={styles.statItem}>
               <Ionicons name="heart" size={14} color="#FF1493" />
               <Text style={styles.statText}>
-                {item.hotTake._count.reactions}
+                {item.hotTake?._count?.reactions || 0}
               </Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="chatbubble" size={14} color="#00FF9F" />
               <Text style={styles.statText}>
-                {item.hotTake._count.comments}
+                {item.hotTake?._count?.comments || 0}
               </Text>
             </View>
           </View>
@@ -264,9 +261,6 @@ export default function CollectionDetailScreen() {
   }
 
   const isOwner = collection.isOwner ?? false;
-  
-  // DEBUG: Log owner check in render
-  console.log('🎯 Rendering collection. isOwner:', isOwner);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -299,7 +293,7 @@ export default function CollectionDetailScreen() {
       </View>
 
       <FlatList
-        data={collection.items}
+        data={collection.items || []}
         renderItem={renderHotTake}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={
@@ -320,13 +314,13 @@ export default function CollectionDetailScreen() {
             {/* Stats */}
             <View style={styles.statsRow}>
               <View style={styles.statBox}>
-                <Text style={styles.statValue}>{collection._count.items}</Text>
+                <Text style={styles.statValue}>{collection._count?.items || 0}</Text>
                 <Text style={styles.statLabel}>Hot Takes</Text>
               </View>
               {collection.isPublic && (
                 <View style={styles.statBox}>
                   <Text style={styles.statValue}>
-                    {collection._count.followers}
+                    {collection._count?.followers || 0}
                   </Text>
                   <Text style={styles.statLabel}>Followers</Text>
                 </View>
@@ -345,7 +339,7 @@ export default function CollectionDetailScreen() {
 
             {/* Creator */}
             <Text style={styles.creatorText}>
-              by @{collection.user.username}
+              by @{collection.user?.username || 'Unknown'}
             </Text>
 
             {/* Divider */}
@@ -536,4 +530,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-

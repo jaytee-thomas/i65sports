@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   Image,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -24,15 +25,15 @@ interface Collection {
   description?: string;
   isPublic: boolean;
   coverImage?: string;
-  user: {
+  User: {
     username: string;
   };
   _count: {
-    items: number;
-    followers: number;
+    collection_items: number;
+    collection_followers: number;
   };
-  items: Array<{
-    hotTake: {
+  collection_items: Array<{
+    HotTake: {
       thumbUrl?: string;
       videoUrl: string;
     };
@@ -40,7 +41,7 @@ interface Collection {
 }
 
 export default function CollectionsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { getToken } = useAuth();
 
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -61,15 +62,22 @@ export default function CollectionsScreen() {
         const response = await axios.get(`${API_URL}/collections`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setCollections(response.data.collections);
+        console.log('Collections loaded:', response.data.collections);
+        setCollections(response.data.collections || []);
       } else {
         const response = await axios.get(`${API_URL}/bookmarks`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        setBookmarks(response.data.bookmarks);
+        console.log('Bookmarks loaded:', response.data.bookmarks);
+        setBookmarks(response.data.bookmarks || []);
       }
     } catch (error) {
       console.error('Error loading data:', error);
+      if (activeTab === 'collections') {
+        setCollections([]);
+      } else {
+        setBookmarks([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -80,18 +88,55 @@ export default function CollectionsScreen() {
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      navigation.navigate('Home' as never);
+      navigation.navigate('Home');
     }
   };
 
+  const handleUnbookmark = async (bookmarkId: string, takeId: string) => {
+    Alert.alert(
+      'Remove Bookmark',
+      'Remove this Hot Take from your bookmarks?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await getToken();
+              await axios.post(
+                `${API_URL}/bookmarks`,
+                { takeId },
+                {
+                  headers: { Authorization: `Bearer ${token}` },
+                }
+              );
+              
+              // Remove from local state
+              setBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId));
+              
+              Alert.alert('Success', 'Bookmark removed');
+            } catch (error) {
+              console.error('Error removing bookmark:', error);
+              Alert.alert('Error', 'Failed to remove bookmark');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderCollection = ({ item }: { item: Collection }) => {
-    const previewImages = item.items.slice(0, 3);
+    const previewImages = item.collection_items?.slice(0, 3) || [];
 
     return (
       <TouchableOpacity
         style={styles.collectionCard}
         onPress={() =>
-          (navigation as any).navigate('CollectionDetail', {
+          navigation.navigate('CollectionDetail', {
             collectionId: item.id,
           })
         }
@@ -128,8 +173,8 @@ export default function CollectionsScreen() {
             )}
           </View>
           <Text style={styles.collectionStats}>
-            {item._count.items} Hot Takes
-            {item.isPublic && ` • ${item._count.followers} followers`}
+            {item._count?.collection_items || 0} Hot Takes
+            {item.isPublic && ` • ${item._count?.collection_followers || 0} followers`}
           </Text>
         </View>
       </TouchableOpacity>
@@ -140,7 +185,7 @@ export default function CollectionsScreen() {
     <TouchableOpacity
       style={styles.bookmarkCard}
       onPress={() =>
-        (navigation as any).navigate('HotTakeDetail', {
+        navigation.navigate('HotTakeDetail', {
           hotTake: item.hotTake,
         })
       }
@@ -150,22 +195,33 @@ export default function CollectionsScreen() {
       </View>
       <View style={styles.bookmarkInfo}>
         <Text style={styles.bookmarkTitle} numberOfLines={2}>
-          {item.hotTake.title}
+          {item.hotTake?.title || 'Untitled'}
         </Text>
         <Text style={styles.bookmarkAuthor}>
-          @{item.hotTake.author.username}
+          @{item.hotTake?.author?.username || 'Unknown'}
         </Text>
         <View style={styles.bookmarkStats}>
           <View style={styles.statItem}>
             <Ionicons name="heart" size={14} color="#FF1493" />
-            <Text style={styles.statText}>{item.hotTake._count.reactions}</Text>
+            <Text style={styles.statText}>{item.hotTake?._count?.reactions || 0}</Text>
           </View>
           <View style={styles.statItem}>
             <Ionicons name="chatbubble" size={14} color="#00FF9F" />
-            <Text style={styles.statText}>{item.hotTake._count.comments}</Text>
+            <Text style={styles.statText}>{item.hotTake?._count?.comments || 0}</Text>
           </View>
         </View>
       </View>
+
+      {/* Delete Button */}
+      <TouchableOpacity
+        style={styles.deleteButton}
+        onPress={(e) => {
+          e.stopPropagation();
+          handleUnbookmark(item.id, item.hotTake?.id || item.takeId);
+        }}
+      >
+        <Ionicons name="trash-outline" size={20} color="#FF4444" />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 
@@ -185,12 +241,17 @@ export default function CollectionsScreen() {
         {activeTab === 'collections' ? (
           <TouchableOpacity
             style={styles.createButton}
-            onPress={() => navigation.navigate('CreateCollection' as never)}
+            onPress={() => navigation.navigate('CreateCollection')}
           >
             <Ionicons name="add" size={24} color="#00FF9F" />
           </TouchableOpacity>
         ) : (
-          <View style={styles.createButton} />
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => Alert.alert('Sort', 'Sort bookmarks by date, title, or author')}
+          >
+            <Ionicons name="funnel-outline" size={20} color="#8892A6" />
+          </TouchableOpacity>
         )}
       </View>
 
@@ -249,7 +310,7 @@ export default function CollectionsScreen() {
             </Text>
             <TouchableOpacity
               style={styles.createFirstButton}
-              onPress={() => navigation.navigate('CreateCollection' as never)}
+              onPress={() => navigation.navigate('CreateCollection')}
             >
               <Ionicons name="add" size={20} color="#FFFFFF" />
               <Text style={styles.createFirstText}>Create Collection</Text>
@@ -422,6 +483,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
     overflow: 'hidden',
+    position: 'relative',
   },
   bookmarkThumbnail: {
     width: 120,
@@ -434,6 +496,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 12,
     justifyContent: 'space-between',
+    paddingRight: 48,
   },
   bookmarkTitle: {
     fontSize: 15,
@@ -458,6 +521,19 @@ const styles = StyleSheet.create({
   statText: {
     fontSize: 12,
     color: '#B8C5D6',
+  },
+  deleteButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 68, 68, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 68, 68, 0.3)',
   },
   loadingContainer: {
     flex: 1,

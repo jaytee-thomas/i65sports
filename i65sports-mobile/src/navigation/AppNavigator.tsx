@@ -29,6 +29,8 @@ import CollectionDetailScreen from '../screens/CollectionDetailScreen';
 import CreateCollectionScreen from '../screens/CreateCollectionScreen';
 import UploadHotTakeScreen from '../screens/UploadHotTakeScreen';
 import DraftsScreen from '../screens/DraftsScreen';
+import AnalyticsScreen from '../screens/AnalyticsScreen';
+import ChallengesScreen from '../screens/ChallengesScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -48,6 +50,10 @@ function MainTabs() {
             iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
           } else if (route.name === 'Notifications') {
             iconName = focused ? 'notifications' : 'notifications-outline';
+          } else if (route.name === 'Analytics') {
+            iconName = focused ? 'bar-chart' : 'bar-chart-outline';
+          } else if (route.name === 'Challenges') {
+            iconName = focused ? 'trophy' : 'trophy-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           } else {
@@ -106,6 +112,26 @@ function MainTabs() {
         component={NotificationsScreen}
         options={{
           headerShown: false,
+        }}
+      />
+      <Tab.Screen
+        name="Analytics"
+        component={AnalyticsScreen}
+        options={{
+          headerShown: true,
+          headerStyle: { backgroundColor: '#0A0E27' },
+          headerTintColor: '#FFFFFF',
+          headerTitle: 'Analytics',
+        }}
+      />
+      <Tab.Screen
+        name="Challenges"
+        component={ChallengesScreen}
+        options={{
+          headerShown: true,
+          headerStyle: { backgroundColor: '#0A0E27' },
+          headerTintColor: '#FFFFFF',
+          headerTitle: 'Challenges',
         }}
       />
       <Tab.Screen name="Profile" component={ProfileScreen} />
@@ -258,6 +284,17 @@ export default function AppNavigator() {
               name="Drafts"
               component={DraftsScreen}
               options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Analytics"
+              component={AnalyticsScreen}
+              options={{
+                headerShown: true,
+                headerStyle: { backgroundColor: '#0A0E27' },
+                headerTintColor: '#FFFFFF',
+                headerTitle: 'Analytics',
+                headerBackTitle: 'Back',
+              }}
             />
           </>
         ) : (

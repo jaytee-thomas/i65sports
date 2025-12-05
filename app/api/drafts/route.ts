@@ -18,7 +18,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ drafts: [] });
     }
 
-    const drafts = await prisma.draft.findMany({
+    const drafts = await (prisma as any).drafts.findMany({
       where: { userId: dbUser.id },
       orderBy: { updatedAt: 'desc' },
     });
@@ -71,8 +71,9 @@ export async function POST(request: Request) {
       });
     }
 
-    const draft = await prisma.draft.create({
+    const draft = await (prisma as any).drafts.create({
       data: {
+        id: `draft_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
         userId: dbUser.id,
         title,
         videoUri,
@@ -95,4 +96,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

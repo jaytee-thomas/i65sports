@@ -24,18 +24,18 @@ export async function GET(request: Request) {
       });
     }
 
-    const conversations = await prisma.conversation.findMany({
+    const conversations = await (prisma as any).conversations.findMany({
       where: {
-        participants: {
+        conversation_participants: {
           some: {
             userId: dbUser.id,
           },
         },
       },
       include: {
-        participants: {
+        conversation_participants: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 username: true,
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
           },
           take: 1,
           include: {
-            sender: {
+            User: {
               select: {
                 id: true,
                 username: true,
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
         _count: {
           select: {
             messages: true,
-          },
+          } as any,
         },
       },
       orderBy: {
@@ -103,19 +103,19 @@ export async function POST(request: Request) {
 
     // For direct messages, check if conversation already exists
     if (type === 'DIRECT' && participantIds.length === 1) {
-      const existingConversation = await prisma.conversation.findFirst({
+      const existingConversation = await (prisma as any).conversations.findFirst({
         where: {
           type: 'DIRECT',
           AND: [
             {
-              participants: {
+              conversation_participants: {
                 some: {
                   userId: dbUser.id,
                 },
               },
             },
             {
-              participants: {
+              conversation_participants: {
                 some: {
                   userId: participantIds[0],
                 },
@@ -124,9 +124,9 @@ export async function POST(request: Request) {
           ],
         },
         include: {
-          participants: {
+          conversation_participants: {
             include: {
-              user: {
+              User: {
                 select: {
                   id: true,
                   username: true,
@@ -144,22 +144,29 @@ export async function POST(request: Request) {
     }
 
     // Create new conversation
-    const conversation = await prisma.conversation.create({
+    const conversation = await (prisma as any).conversations.create({
       data: {
         type: type || 'DIRECT',
         name,
         imageUrl,
-        participants: {
+        updatedAt: new Date(),
+        conversation_participants: {
           create: [
-            { userId: dbUser.id },
-            ...participantIds.map((id: string) => ({ userId: id })),
+            { 
+              id: `cp_${Date.now()}_${dbUser.id}`,
+              userId: dbUser.id 
+            },
+            ...participantIds.map((id: string, index: number) => ({ 
+              id: `cp_${Date.now()}_${index}_${id}`,
+              userId: id 
+            })),
           ],
         },
       },
       include: {
-        participants: {
+        conversation_participants: {
           include: {
-            user: {
+            User: {
               select: {
                 id: true,
                 username: true,
@@ -177,4 +184,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 });
   }
 }
-

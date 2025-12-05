@@ -6,6 +6,7 @@ import { VideoProcessor } from "../../../backend/services/videoProcessor";
 import * as fs from "fs";
 import * as path from "path";
 import { promisify } from "util";
+import { randomUUID } from "crypto";
 
 const unlink = promisify(fs.unlink);
 const mkdir = promisify(fs.mkdir);
@@ -199,6 +200,7 @@ export async function POST(request: Request) {
     // Save to database with authenticated user
     const hotTake = await prisma.hotTake.create({
       data: {
+        id: randomUUID(),
         title,
         videoUrl,
         thumbUrl: thumbUrl,

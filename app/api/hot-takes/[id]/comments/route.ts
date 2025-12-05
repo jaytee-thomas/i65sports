@@ -1,90 +1,114 @@
-import { NextResponse } from 'next/server';
-import { currentUser } from '@clerk/nextjs/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 
-export async function POST(
-  request: Request,
+export async function GET(
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const clerkUser = await currentUser();
-    if (!clerkUser) {
+    const { id: takeId } = params;
+
+    const comments = await prisma.comment.findMany({
+      where: {
+        takeId,
+      },
+      include: {
+        User: {
+          select: {
+            id: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+      } as any,
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 50,
+    });
+
+    // Map User to author for backward compatibility
+    const formattedComments = comments.map((comment: any) => ({
+      ...comment,
+      author: comment.User,
+    }));
+
+    return NextResponse.json({
+      comments: formattedComments,
+    });
+  } catch (error) {
+    console.error('[comments-get]:', error);
+    return NextResponse.json(
+      { error: 'Failed to load comments' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { userId: clerkId } = await auth();
+
+    if (!clerkId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id: takeId } = params;
     const body = await request.json();
     const { text } = body;
 
     if (!text || text.trim().length === 0) {
-      return NextResponse.json({ error: 'Comment text is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Comment text is required' },
+        { status: 400 }
+      );
     }
 
-    let dbUser = await prisma.user.findUnique({
-      where: { clerkId: clerkUser.id },
+    // Find user
+    const dbUser = await prisma.user.findUnique({
+      where: { clerkId },
     });
 
     if (!dbUser) {
-      dbUser = await prisma.user.create({
-        data: {
-          clerkId: clerkUser.id,
-          email: clerkUser.emailAddresses[0]?.emailAddress || '',
-          username: clerkUser.username || clerkUser.emailAddresses[0]?.emailAddress.split('@')[0] || 'user',
-        },
-      });
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
+    // Create comment
     const comment = await prisma.comment.create({
       data: {
         body: text.trim(),
+        takeId,
         authorId: dbUser.id,
-        takeId: id,
       },
       include: {
-        author: {
+        User: {
           select: {
             id: true,
             username: true,
             avatarUrl: true,
           },
         },
-      },
+      } as any,
     });
 
-    return NextResponse.json({ comment }, { status: 201 });
+    // Map User to author for backward compatibility
+    const formattedComment = {
+      ...comment,
+      author: (comment as any).User,
+    };
+
+    return NextResponse.json({
+      comment: formattedComment,
+    });
   } catch (error) {
     console.error('[comments-post]:', error);
-    return NextResponse.json({ error: 'Failed to create comment' }, { status: 500 });
-  }
-}
-
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const { id } = params;
-    const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
-
-    const comments = await prisma.comment.findMany({
-      where: { takeId: id },
-      include: {
-        author: {
-          select: {
-            id: true,
-            username: true,
-            avatarUrl: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
-
-    return NextResponse.json({ comments });
-  } catch (error) {
-    console.error('[comments-get]:', error);
-    return NextResponse.json({ error: 'Failed to fetch comments' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to create comment' },
+      { status: 500 }
+    );
   }
 }

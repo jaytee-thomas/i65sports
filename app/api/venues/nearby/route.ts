@@ -19,23 +19,36 @@ export async function GET(request: Request) {
       );
     }
 
-    const venues = await prisma.venue.findMany();
+    // FIXED: Changed from prisma.venue to prisma.venues (matches schema)
+    const venues = await (prisma as any).venues.findMany();
     console.log('🏟️ Found venues in DB:', venues.length);
 
+    if (venues.length === 0) {
+      console.warn('⚠️ No venues in database - you may need to run the seed script');
+      return NextResponse.json({ venues: [] });
+    }
+
     const nearbyVenues = venues
-      .map((venue) => ({
+      .map((venue: any) => ({
         ...venue,
         distance: calculateDistance(latitude, longitude, venue.latitude, venue.longitude),
       }))
-      .filter((venue) => venue.distance <= radius)
-      .sort((a, b) => a.distance - b.distance);
+      .filter((venue: any) => venue.distance <= radius)
+      .sort((a: any, b: any) => a.distance - b.distance);
 
     console.log('✅ Nearby venues after filter:', nearbyVenues.length);
+    
+    if (nearbyVenues.length > 0) {
+      console.log('🎯 Closest venue:', nearbyVenues[0].name, `(${nearbyVenues[0].distance.toFixed(2)}km away)`);
+    }
 
     return NextResponse.json({ venues: nearbyVenues });
   } catch (error) {
     console.error('[venues-nearby] Error:', error);
-    return NextResponse.json({ error: 'Failed to find venues' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Failed to find venues',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
 

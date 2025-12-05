@@ -1,24 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
-  SafeAreaView,
+  StyleSheet,
   ActivityIndicator,
-  Dimensions,
   TouchableOpacity,
+  Dimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@clerk/clerk-expo';
 import axios from 'axios';
-import Toast from 'react-native-toast-message';
-import { LineChart, BarChart } from 'react-native-chart-kit';
+import { LineChart } from 'react-native-chart-kit';
 
 const API_URL = 'http://192.168.86.226:3000/api';
-const { width } = Dimensions.get('window');
 
-interface Analytics {
+interface AnalyticsData {
   overview: {
     totalViews: number;
     totalLikes: number;
@@ -47,319 +43,242 @@ interface Analytics {
 
 export default function AnalyticsScreen() {
   const { getToken } = useAuth();
-  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
+  const [range, setRange] = useState('30d');
 
   useEffect(() => {
     fetchAnalytics();
-  }, [timeRange]);
+  }, [range]);
 
   const fetchAnalytics = async () => {
     try {
+      setLoading(true);
       const token = await getToken();
-      const response = await axios.get(`${API_URL}/analytics`, {
-        params: { range: timeRange },
+      const response = await axios.get(`${API_URL}/analytics?range=${range}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-
       setAnalytics(response.data);
     } catch (error) {
       console.error('Error fetching analytics:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Failed to load analytics',
-        position: 'bottom',
-      });
     } finally {
       setLoading(false);
     }
   };
 
-  const renderStatCard = (
-    icon: string,
-    label: string,
-    value: number | string,
-    growth?: number,
-    color: string = '#00FF9F'
-  ) => (
-    <View style={styles.statCard}>
-      <View style={[styles.statIcon, { backgroundColor: `${color}20` }]}>
-        <Ionicons name={icon as any} size={24} color={color} />
-      </View>
-      <View style={styles.statInfo}>
-        <Text style={styles.statLabel}>{label}</Text>
-        <Text style={styles.statValue}>{typeof value === 'number' ? value.toLocaleString() : value}</Text>
-        {growth !== undefined && (
-          <View style={styles.growth}>
-            <Ionicons
-              name={growth >= 0 ? 'trending-up' : 'trending-down'}
-              size={14}
-              color={growth >= 0 ? '#00FF9F' : '#FF6B6B'}
-            />
-            <Text style={[
-              styles.growthText,
-              { color: growth >= 0 ? '#00FF9F' : '#FF6B6B' }
-            ]}>
-              {Math.abs(growth)}%
-            </Text>
-          </View>
-        )}
-      </View>
-    </View>
-  );
-
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#00FF9F" />
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#3b82f6" />
+        <Text style={styles.loadingText}>Loading analytics...</Text>
+      </View>
     );
   }
 
   if (!analytics) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>No analytics data available</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <Text style={styles.errorText}>No analytics data available</Text>
+      </View>
     );
   }
 
-  const chartConfig = {
-    backgroundColor: '#1A1F3A',
-    backgroundGradientFrom: '#1A1F3A',
-    backgroundGradientTo: '#1A1F3A',
-    decimalPlaces: 0,
-    color: (opacity = 1) => `rgba(0, 255, 159, ${opacity})`,
-    labelColor: (opacity = 1) => `rgba(184, 197, 214, ${opacity})`,
-    style: {
-      borderRadius: 16,
-    },
-    propsForDots: {
-      r: '4',
-      strokeWidth: '2',
-      stroke: '#00FF9F',
-    },
-  };
+  const screenWidth = Dimensions.get('window').width;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={styles.container}>
+      <View style={styles.content}>
         {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Analytics</Text>
-          <View style={styles.timeRangeSelector}>
-            {(['7d', '30d', '90d'] as const).map((range) => (
-              <TouchableOpacity
-                key={range}
-                style={[
-                  styles.timeRangeButton,
-                  timeRange === range && styles.timeRangeButtonActive,
-                ]}
-                onPress={() => setTimeRange(range)}
-              >
-                <Text
-                  style={[
-                    styles.timeRangeText,
-                    timeRange === range && styles.timeRangeTextActive,
-                  ]}
-                >
-                  {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : '90 Days'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+        <Text style={styles.title}>Analytics Dashboard</Text>
+
+        {/* Time Range Selector */}
+        <View style={styles.rangeSelector}>
+          {['7d', '30d', '90d'].map((r) => (
+            <TouchableOpacity
+              key={r}
+              onPress={() => setRange(r)}
+              style={[styles.rangeButton, range === r && styles.rangeButtonActive]}
+            >
+              <Text style={[styles.rangeButtonText, range === r && styles.rangeButtonTextActive]}>
+                {r === '7d' ? '7 Days' : r === '30d' ? '30 Days' : '90 Days'}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Overview Stats */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Overview</Text>
-          <View style={styles.statsGrid}>
-            {renderStatCard(
-              'eye',
-              'Total Views',
-              analytics.overview.totalViews,
-              analytics.growth.viewsGrowth,
-              '#00A8E8'
-            )}
-            {renderStatCard(
-              'heart',
-              'Total Likes',
-              analytics.overview.totalLikes,
-              undefined,
-              '#FF1493'
-            )}
-            {renderStatCard(
-              'chatbubble',
-              'Comments',
-              analytics.overview.totalComments,
-              undefined,
-              '#00FF9F'
-            )}
-            {renderStatCard(
-              'people',
-              'Followers',
-              analytics.overview.totalFollowers,
-              analytics.growth.followersGrowth,
-              '#FFB800'
-            )}
-          </View>
-
-          <View style={styles.engagementCard}>
-            <Text style={styles.engagementLabel}>Engagement Rate</Text>
-            <Text style={styles.engagementValue}>
-              {analytics.overview.engagementRate.toFixed(1)}%
-            </Text>
-            <View style={styles.progressBar}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${Math.min(analytics.overview.engagementRate, 100)}%` },
-                ]}
-              />
-            </View>
-          </View>
+        {/* Stats Grid */}
+        <View style={styles.statsGrid}>
+          <StatCard
+            icon="👁️"
+            label="Views"
+            value={analytics.overview.totalViews.toLocaleString()}
+            growth={analytics.growth.viewsGrowth}
+          />
+          <StatCard
+            icon="❤️"
+            label="Likes"
+            value={analytics.overview.totalLikes.toLocaleString()}
+          />
+          <StatCard
+            icon="💬"
+            label="Comments"
+            value={analytics.overview.totalComments.toLocaleString()}
+          />
+          <StatCard
+            icon="👥"
+            label="Followers"
+            value={analytics.overview.totalFollowers.toLocaleString()}
+            growth={analytics.growth.followersGrowth}
+          />
         </View>
 
-        {/* Views Chart */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Views Over Time</Text>
+        {/* Engagement Rate */}
+        <View style={styles.engagementCard}>
+          <Text style={styles.engagementLabel}>Engagement Rate</Text>
+          <Text style={styles.engagementValue}>
+            {analytics.overview.engagementRate.toFixed(2)}%
+          </Text>
+          <Text style={styles.engagementSubtext}>
+            Based on likes, comments, and shares
+          </Text>
+        </View>
+
+        {/* Chart */}
+        <View style={styles.chartCard}>
+          <Text style={styles.chartTitle}>Views Over Time</Text>
           <LineChart
             data={{
               labels: analytics.weeklyData.labels,
-              datasets: [{ data: analytics.weeklyData.views }],
+              datasets: [
+                {
+                  data: analytics.weeklyData.views,
+                },
+              ],
             }}
-            width={width - 32}
+            width={screenWidth - 48}
             height={220}
-            chartConfig={chartConfig}
+            chartConfig={{
+              backgroundColor: '#ffffff',
+              backgroundGradientFrom: '#ffffff',
+              backgroundGradientTo: '#ffffff',
+              decimalPlaces: 0,
+              color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
+              labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+              style: {
+                borderRadius: 16,
+              },
+              propsForDots: {
+                r: '4',
+                strokeWidth: '2',
+                stroke: '#3b82f6',
+              },
+            }}
             bezier
             style={styles.chart}
           />
         </View>
 
-        {/* Likes Chart */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Likes Over Time</Text>
-          <BarChart
-            data={{
-              labels: analytics.weeklyData.labels,
-              datasets: [{ data: analytics.weeklyData.likes }],
-            }}
-            width={width - 32}
-            height={220}
-            chartConfig={chartConfig}
-            style={styles.chart}
-            yAxisLabel=""
-            yAxisSuffix=""
-          />
-        </View>
-
         {/* Top Hot Takes */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Top Performing Hot Takes</Text>
-          {analytics.topHotTakes.map((hotTake, index) => (
-            <View key={hotTake.id} style={styles.topTakeCard}>
+        <View style={styles.topTakesCard}>
+          <Text style={styles.topTakesTitle}>Top Performing Hot Takes</Text>
+          {analytics.topHotTakes.map((take, index) => (
+            <View key={take.id} style={styles.topTakeItem}>
               <View style={styles.topTakeRank}>
-                <Text style={styles.rankText}>#{index + 1}</Text>
+                <Text style={styles.topTakeRankText}>#{index + 1}</Text>
               </View>
               <View style={styles.topTakeInfo}>
                 <Text style={styles.topTakeTitle} numberOfLines={1}>
-                  {hotTake.title || 'Untitled Hot Take'}
+                  {take.title || 'Untitled'}
                 </Text>
                 <View style={styles.topTakeStats}>
-                  <View style={styles.topTakeStat}>
-                    <Ionicons name="eye" size={14} color="#00A8E8" />
-                    <Text style={styles.topTakeStatText}>{hotTake.views}</Text>
-                  </View>
-                  <View style={styles.topTakeStat}>
-                    <Ionicons name="heart" size={14} color="#FF1493" />
-                    <Text style={styles.topTakeStatText}>{hotTake.likes}</Text>
-                  </View>
-                  <View style={styles.topTakeStat}>
-                    <Ionicons name="chatbubble" size={14} color="#00FF9F" />
-                    <Text style={styles.topTakeStatText}>{hotTake.comments}</Text>
-                  </View>
+                  <Text style={styles.topTakeStat}>👁️ {take.views}</Text>
+                  <Text style={styles.topTakeStat}>❤️ {take.likes}</Text>
+                  <Text style={styles.topTakeStat}>💬 {take.comments}</Text>
                 </View>
               </View>
             </View>
           ))}
         </View>
-      </ScrollView>
-    </SafeAreaView>
+
+        {/* Coming Soon */}
+        <View style={styles.comingSoonCard}>
+          <Text style={styles.comingSoonTitle}>🚀 Coming Soon</Text>
+          <Text style={styles.comingSoonText}>
+            Best time to post recommendations based on your audience behavior
+          </Text>
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
+function StatCard({ icon, label, value, growth }: any) {
+  return (
+    <View style={styles.statCard}>
+      <Text style={styles.statIcon}>{icon}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+      {growth !== undefined && (
+        <Text style={[styles.statGrowth, growth >= 0 ? styles.growthPositive : styles.growthNegative]}>
+          {growth >= 0 ? '↑' : '↓'} {Math.abs(growth).toFixed(1)}%
+        </Text>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0E27',
+    backgroundColor: '#f9fafb',
+  },
+  content: {
+    padding: 16,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#f9fafb',
   },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6b7280',
   },
   errorText: {
     fontSize: 16,
-    color: '#B8C5D6',
+    color: '#ef4444',
   },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  headerTitle: {
+  title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#111827',
     marginBottom: 16,
   },
-  timeRangeSelector: {
+  rangeSelector: {
     flexDirection: 'row',
     gap: 8,
+    marginBottom: 16,
   },
-  timeRangeButton: {
+  rangeButton: {
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#ffffff',
     borderRadius: 8,
-    backgroundColor: '#1A1F3A',
-    borderWidth: 1,
-    borderColor: '#3A4166',
     alignItems: 'center',
   },
-  timeRangeButtonActive: {
-    backgroundColor: '#00FF9F',
-    borderColor: '#00FF9F',
+  rangeButtonActive: {
+    backgroundColor: '#3b82f6',
   },
-  timeRangeText: {
+  rangeButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#B8C5D6',
+    color: '#374151',
   },
-  timeRangeTextActive: {
-    color: '#0A0E27',
-  },
-  section: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 16,
+  rangeButtonTextActive: {
+    color: '#ffffff',
   },
   statsGrid: {
     flexDirection: 'row',
@@ -370,101 +289,123 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     minWidth: '47%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1A1F3A',
-    padding: 16,
+    backgroundColor: '#ffffff',
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#3A4166',
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   statIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  statInfo: {
-    flex: 1,
+    fontSize: 24,
+    marginBottom: 8,
   },
   statLabel: {
     fontSize: 12,
-    color: '#8892A6',
+    color: '#6b7280',
     marginBottom: 4,
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#111827',
+    marginBottom: 4,
   },
-  growth: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-  },
-  growthText: {
+  statGrowth: {
     fontSize: 12,
     fontWeight: '600',
   },
+  growthPositive: {
+    color: '#10b981',
+  },
+  growthNegative: {
+    color: '#ef4444',
+  },
   engagementCard: {
-    backgroundColor: '#1A1F3A',
-    padding: 20,
+    backgroundColor: '#ffffff',
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#3A4166',
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   engagementLabel: {
     fontSize: 14,
-    color: '#8892A6',
+    color: '#6b7280',
     marginBottom: 8,
   },
   engagementValue: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: 'bold',
-    color: '#00FF9F',
+    color: '#3b82f6',
+    marginBottom: 8,
+  },
+  engagementSubtext: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  chartCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  chartTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
     marginBottom: 12,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: '#3A4166',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#00FF9F',
-    borderRadius: 4,
   },
   chart: {
     borderRadius: 16,
-    marginVertical: 8,
   },
-  topTakeCard: {
+  topTakesCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  topTakesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  topTakeItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1A1F3A',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#3A4166',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
   },
   topTakeRank: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#00FF9F',
+    backgroundColor: '#f3f4f6',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-  rankText: {
+  topTakeRankText: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#0A0E27',
+    color: '#6b7280',
   },
   topTakeInfo: {
     flex: 1,
@@ -472,21 +413,32 @@ const styles = StyleSheet.create({
   topTakeTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 8,
+    color: '#111827',
+    marginBottom: 4,
   },
   topTakeStats: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
   },
   topTakeStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  topTakeStatText: {
     fontSize: 12,
-    color: '#B8C5D6',
+    color: '#6b7280',
+  },
+  comingSoonCard: {
+    backgroundColor: '#8b5cf6',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+  },
+  comingSoonTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 8,
+  },
+  comingSoonText: {
+    fontSize: 14,
+    color: '#ffffff',
+    opacity: 0.9,
   },
 });
-

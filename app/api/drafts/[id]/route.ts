@@ -23,7 +23,7 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const draft = await prisma.draft.findUnique({
+    const draft = await (prisma as any).drafts.findUnique({
       where: { id },
     });
 
@@ -65,7 +65,7 @@ export async function PATCH(
     });
 
     // Check ownership
-    const existingDraft = await prisma.draft.findUnique({
+    const existingDraft = await (prisma as any).drafts.findUnique({
       where: { id },
     });
 
@@ -73,11 +73,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const draft = await prisma.draft.update({
+    const draft = await (prisma as any).drafts.update({
       where: { id },
       data: {
         ...body,
         ...(body.scheduledFor && { scheduledFor: new Date(body.scheduledFor) }),
+        updatedAt: new Date(),
       },
     });
 
@@ -109,7 +110,7 @@ export async function DELETE(
     });
 
     // Check ownership
-    const draft = await prisma.draft.findUnique({
+    const draft = await (prisma as any).drafts.findUnique({
       where: { id },
     });
 
@@ -117,7 +118,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    await prisma.draft.delete({
+    await (prisma as any).drafts.delete({
       where: { id },
     });
 
@@ -130,4 +131,3 @@ export async function DELETE(
     );
   }
 }
-

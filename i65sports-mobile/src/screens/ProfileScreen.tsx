@@ -90,7 +90,8 @@ export default function ProfileScreen() {
       });
 
       console.log('Profile loaded:', response.data);
-      setProfile(response.data);
+      // Backend returns { user: {...} }, so extract the user object
+      setProfile(response.data.user);
     } catch (err: any) {
       console.error('Error loading profile:', err.response?.status, err.response?.data);
       
@@ -225,7 +226,8 @@ export default function ProfileScreen() {
     );
   }
 
-  const totalLikes = profile?.hotTakes.reduce(
+  // FIXED: Safe check for hotTakes before calling reduce
+  const totalLikes = profile?.hotTakes?.reduce(
     (sum, ht) => sum + (ht._count.reactions || 0),
     0
   ) || 0;
@@ -241,7 +243,7 @@ export default function ProfileScreen() {
         </View>
         <View style={styles.statsRow}>
           <View style={styles.stat}>
-            <Text style={styles.statNumber}>{profile?.hotTakes.length || 0}</Text>
+            <Text style={styles.statNumber}>{profile?.hotTakes?.length || 0}</Text>
             <Text style={styles.statLabel}>Hot Takes</Text>
           </View>
           <View style={styles.stat}>

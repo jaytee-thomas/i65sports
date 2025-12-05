@@ -20,8 +20,8 @@ interface Conversation {
   type: 'DIRECT' | 'GROUP';
   name?: string;
   imageUrl?: string;
-  participants: Array<{
-    user: {
+  conversation_participants: Array<{
+    User: {
       id: string;
       username: string;
       avatarUrl?: string;
@@ -32,7 +32,8 @@ interface Conversation {
     content: string;
     type: string;
     createdAt: string;
-    sender: {
+    User: {
+      id: string;
       username: string;
     };
   }>;
@@ -43,7 +44,7 @@ interface Conversation {
 }
 
 export default function MessagesScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { getToken } = useAuth();
   const { user } = useUser();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -60,9 +61,11 @@ export default function MessagesScreen() {
       const response = await axios.get(`${API_URL}/conversations`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setConversations(response.data.conversations);
+      console.log('Conversations loaded:', response.data.conversations);
+      setConversations(response.data.conversations || []);
     } catch (error) {
       console.error('Error loading conversations:', error);
+      setConversations([]);
     } finally {
       setLoading(false);
     }
@@ -73,50 +76,64 @@ export default function MessagesScreen() {
       return conversation.name || 'Group Chat';
     }
     // For direct messages, show other user's name
-    const otherUser = conversation.participants.find(
-      (p) => p.user.id !== user?.id
+    const otherUser = conversation.conversation_participants?.find(
+      (p) => p?.User?.id !== user?.id
     );
-    return otherUser ? `@${otherUser.user.username}` : 'Unknown User';
+    return otherUser?.User?.username 
+      ? `@${otherUser.User.username}` 
+      : 'Unknown User';
   };
 
   const getLastMessage = (conversation: Conversation) => {
-    if (conversation.messages.length === 0) return 'No messages yet';
+    if (!conversation.messages || conversation.messages.length === 0) {
+      return 'No messages yet';
+    }
+    
     const lastMsg = conversation.messages[0];
+    
+    if (!lastMsg || !lastMsg.User) {
+      return 'No messages yet';
+    }
+
     const prefix =
-      lastMsg.sender.username === user?.username ? 'You: ' : '';
-    return `${prefix}${lastMsg.content}`;
+      lastMsg.User.username === user?.username ? 'You: ' : '';
+    return `${prefix}${lastMsg.content || ''}`;
   };
 
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const hours = diff / (1000 * 60 * 60);
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diff = now.getTime() - date.getTime();
+      const hours = diff / (1000 * 60 * 60);
 
-    if (hours < 24) {
-      return date.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-      });
+      if (hours < 24) {
+        return date.toLocaleTimeString('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+        });
+      }
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch (error) {
+      return '';
     }
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   const renderConversation = ({ item }: { item: Conversation }) => {
     const isGroup = item.type === 'GROUP';
     const otherUser = !isGroup
-      ? item.participants.find((p) => p.user.id !== user?.id)
+      ? item.conversation_participants?.find((p) => p?.User?.id !== user?.id)
       : null;
 
     return (
       <TouchableOpacity
         style={styles.conversationItem}
         onPress={() =>
-          navigation.navigate('Chat' as never, {
+          navigation.navigate('Chat', {
             conversationId: item.id,
             conversationName: getConversationName(item),
             isGroup,
-          } as never)
+          })
         }
       >
         {/* Avatar */}
@@ -149,7 +166,7 @@ export default function MessagesScreen() {
               {getLastMessage(item)}
             </Text>
             {/* Unread badge */}
-            {item._count.messages > 0 && (
+            {item._count?.messages > 0 && (
               <View style={styles.unreadBadge}>
                 <Text style={styles.unreadCount}>
                   {item._count.messages > 99 ? '99+' : item._count.messages}
@@ -171,7 +188,7 @@ export default function MessagesScreen() {
         <Text style={styles.headerTitle}>Messages</Text>
         <TouchableOpacity
           style={styles.newMessageButton}
-          onPress={() => navigation.navigate('NewMessage' as never)}
+          onPress={() => navigation.navigate('NewMessage')}
         >
           <Ionicons name="create-outline" size={24} color="#00FF9F" />
         </TouchableOpacity>
@@ -191,7 +208,7 @@ export default function MessagesScreen() {
           </Text>
           <TouchableOpacity
             style={styles.startChatButton}
-            onPress={() => navigation.navigate('NewMessage' as never)}
+            onPress={() => navigation.navigate('NewMessage')}
           >
             <Ionicons name="add" size={20} color="#FFFFFF" />
             <Text style={styles.startChatText}>New Message</Text>
@@ -363,4 +380,3 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 });
-

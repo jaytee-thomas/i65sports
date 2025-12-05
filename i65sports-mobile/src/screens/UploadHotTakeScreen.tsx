@@ -18,6 +18,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import axios from 'axios';
 import Toast from 'react-native-toast-message';
 import { uploadHotTake, UploadProgress } from '../services/upload';
+import EngagementToolsSection from '../components/EngagementToolsSection';
 
 // UploadHotTakeScreen - Screen for uploading or saving Hot Takes as drafts
 
@@ -60,6 +61,12 @@ export default function UploadHotTakeScreen() {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   
+  // Engagement Tools State
+  const [pollData, setPollData] = useState<any>(null);
+  const [questionData, setQuestionData] = useState<any>(null);
+  const [predictionData, setPredictionData] = useState<any>(null);
+  const [challengeData, setChallengeData] = useState<any>(null);
+  
   // Track if we've already saved to prevent duplicate saves
   const hasSavedRef = useRef(false);
   const hasNavigatedRef = useRef(false);
@@ -87,6 +94,13 @@ export default function UploadHotTakeScreen() {
         visibility,
         scheduledFor: scheduledFor?.toISOString(),
         editMetadata,
+        // Include engagement tools in draft
+        engagementTools: {
+          poll: pollData,
+          question: questionData,
+          prediction: predictionData,
+          challenge: challengeData,
+        },
       };
 
       console.log('💾 Saving draft...', { draftId, hasTitle: !!title.trim() });
@@ -167,9 +181,9 @@ export default function UploadHotTakeScreen() {
       const token = await getToken();
       console.log('🔐 Got auth token:', token ? 'Yes' : 'No');
 
-      // Use existing upload service with sport and editMetadata
+      // First upload the video and create Hot Take
       console.log('📹 Calling uploadHotTake...');
-      await uploadHotTake(
+      const hotTakeResponse = await uploadHotTake(
         videoUri,
         title,
         undefined, // venue
@@ -182,7 +196,57 @@ export default function UploadHotTakeScreen() {
         editMetadata
       );
 
-      console.log('✅ Upload completed!');
+      console.log('✅ Upload completed!', hotTakeResponse);
+
+      // Get the created Hot Take ID from response
+      const hotTakeId = hotTakeResponse?.id || hotTakeResponse?.hotTake?.id;
+
+      if (!hotTakeId) {
+        throw new Error('No Hot Take ID returned from upload');
+      }
+
+      // Create engagement tools if they exist
+      console.log('🎮 Creating engagement tools...');
+      
+      if (pollData) {
+        console.log('📊 Creating poll...');
+        await axios.post(`${API_URL}/polls`, {
+          takeId: hotTakeId,
+          ...pollData,
+        }, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+
+      if (questionData) {
+        console.log('❓ Creating question...');
+        await axios.post(`${API_URL}/questions`, {
+          takeId: hotTakeId,
+          ...questionData,
+        }, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+
+      if (predictionData) {
+        console.log('🏆 Creating prediction...');
+        await axios.post(`${API_URL}/predictions`, {
+          takeId: hotTakeId,
+          ...predictionData,
+        }, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+
+      if (challengeData) {
+        console.log('🔥 Creating challenge...');
+        await axios.post(`${API_URL}/challenges`, {
+          takeId: hotTakeId,
+          ...challengeData,
+        }, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
 
       // If this was a draft, delete it
       if (draftId) {
@@ -195,6 +259,9 @@ export default function UploadHotTakeScreen() {
       Toast.show({
         type: 'success',
         text1: 'Hot Take posted! 🔥',
+        text2: pollData || questionData || predictionData || challengeData 
+          ? 'With engagement tools!' 
+          : undefined,
         position: 'bottom',
         visibilityTime: 2000,
       });
@@ -416,6 +483,16 @@ export default function UploadHotTakeScreen() {
           </View>
         </View>
 
+        {/* Engagement Tools Section */}
+        <View style={styles.engagementSection}>
+          <EngagementToolsSection
+            onPollChange={setPollData}
+            onQuestionChange={setQuestionData}
+            onPredictionChange={setPredictionData}
+            onChallengeChange={setChallengeData}
+          />
+        </View>
+
         {/* Schedule */}
         <View style={styles.section}>
           <Text style={styles.label}>Schedule Post (Optional)</Text>
@@ -595,6 +672,12 @@ const styles = StyleSheet.create({
   },
   section: {
     padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1A1F3A',
+  },
+  engagementSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#1A1F3A',
   },

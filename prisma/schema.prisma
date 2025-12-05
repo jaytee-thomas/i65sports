@@ -7,143 +7,25 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  username  String     @unique
-  bio       String?
-  avatarUrl String?
-  role      Role       @default(USER)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt @default(now())
-  clerkId   String?    @unique
-  comments  Comment[]
-  hotTakes  HotTake[]
-  reactions Reaction[]
-  
-  // Follow relationships
-  following Follow[] @relation("UserFollows")
-  followers Follow[] @relation("UserFollowers")
-  
-  // Notification relationships
-  notifications       Notification[] @relation("UserNotifications")
-  triggeredNotifications Notification[] @relation("ActorNotifications")
-  
-  // Check-in relationships
-  checkIns     CheckIn[]
-  
-  // Messaging relationships
-  conversationParticipants ConversationParticipant[]
-  sentMessages             Message[] @relation("SentMessages")
-  messageReadReceipts      MessageReadReceipt[]
-  
-  // Collections and Bookmarks
-  collections          Collection[]
-  collectionFollowers  CollectionFollower[]
-  bookmarks            Bookmark[]
-  
-  // Drafts
-  drafts               Draft[]
-}
-
-model HotTake {
-  id        String     @id @default(cuid())
-  authorId  String
-  kind      TakeKind   @default(VIDEO)
-  title     String?
-  videoUrl  String?
-  audioUrl  String?
-  textBody  String?
-  duration  Int?
-  sport     String?
-  league    String?
-  tags      String[]
-  createdAt DateTime   @default(now())
-  status    TakeStatus @default(PUBLISHED)
-  
-  // VENUE FEATURES (merged from FanReel)
-  recordedAtVenue Boolean  @default(false)
-  gameId          String?
-  venueLat        Float?
-  venueLng        Float?
-  venueName       String?
-  shotAt          DateTime? // When recorded (useful for sorting venue takes)
-  
-  // Video metadata (merged from FanReel)
-  thumbUrl String?
-  width    Int?
-  height   Int?
-  
-  // Relations
-  comments  Comment[]
-  author    User       @relation(fields: [authorId], references: [id])
-  game      Game?      @relation(fields: [gameId], references: [id])
-  reactions Reaction[]
-  notifications Notification[]
-  sharedInMessages Message[]
-  collectionItems CollectionItem[]
-  bookmarks       Bookmark[]
-  
-  // Indexes for performance
-  @@index([createdAt])
-  @@index([recordedAtVenue, createdAt])
-  @@index([gameId, shotAt])
-  @@index([league, createdAt])
-}
-
-model Draft {
-  id            String     @id @default(cuid())
-  userId        String
-  title         String?
-  videoUri      String     // Local video URI
-  thumbnailUri  String?
-  sport         String?
-  venue         String?
-  venueName     String?
-  visibility    Visibility @default(PUBLIC)
-  scheduledFor  DateTime?
-  editMetadata  Json?      // Store video editing metadata
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([scheduledFor])
-  @@map("drafts")
-}
-
-model Reaction {
-  id        String   @id @default(cuid())
-  takeId    String
-  userId    String
-  emoji     String
-  createdAt DateTime @default(now())
-  take      HotTake  @relation(fields: [takeId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id])
-
-  @@unique([takeId, userId, emoji])
-}
-
 model Comment {
-  id        String   @id @default(cuid())
+  id        String   @id
   authorId  String
   takeId    String
   body      String
   createdAt DateTime @default(now())
-  author    User     @relation(fields: [authorId], references: [id])
-  take      HotTake  @relation(fields: [takeId], references: [id], onDelete: Cascade)
-  
+  User      User     @relation(fields: [authorId], references: [id])
+  HotTake   HotTake  @relation(fields: [takeId], references: [id], onDelete: Cascade)
+
   @@index([takeId, createdAt])
 }
 
 model Follow {
-  id          String   @id @default(cuid())
-  followerId  String   // User who is following
-  followingId String   // User being followed
-  createdAt   DateTime @default(now())
-  follower  User @relation("UserFollows", fields: [followerId], references: [id], onDelete: Cascade)
-  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+  id                            String   @id
+  followerId                    String
+  createdAt                     DateTime @default(now())
+  followingId                   String
+  User_Follow_followerIdToUser  User     @relation("Follow_followerIdToUser", fields: [followerId], references: [id], onDelete: Cascade)
+  User_Follow_followingIdToUser User     @relation("Follow_followingIdToUser", fields: [followingId], references: [id], onDelete: Cascade)
 
   @@unique([followerId, followingId])
   @@index([followerId])
@@ -151,7 +33,7 @@ model Follow {
 }
 
 model Game {
-  id        String    @id @default(cuid())
+  id        String    @id
   league    String
   homeTeam  String
   awayTeam  String
@@ -159,14 +41,282 @@ model Game {
   startTime DateTime
   seasonKey String?
   createdAt DateTime  @default(now())
-  takes     HotTake[] // Changed from 'reels' to 'takes'
+  HotTake   HotTake[]
 
-  @@index([league, startTime])
   @@index([homeTeam, awayTeam, startTime])
+  @@index([league, startTime])
 }
 
-model Venue {
-  id        String   @id @default(cuid())
+model HotTake {
+  id               String             @id
+  authorId         String
+  kind             TakeKind           @default(VIDEO)
+  title            String?
+  videoUrl         String?
+  audioUrl         String?
+  textBody         String?
+  duration         Int?
+  sport            String?
+  league           String?
+  tags             String[]
+  createdAt        DateTime           @default(now())
+  status           TakeStatus         @default(PUBLISHED)
+  gameId           String?
+  height           Int?
+  recordedAtVenue  Boolean            @default(false)
+  shotAt           DateTime?
+  thumbUrl         String?
+  venueLat         Float?
+  venueLng         Float?
+  venueName        String?
+  width            Int?
+  Comment          Comment[]
+  User             User               @relation(fields: [authorId], references: [id])
+  Game             Game?              @relation(fields: [gameId], references: [id])
+  Notification     Notification[]
+  Reaction         Reaction[]
+  bookmarks        bookmarks[]
+  collection_items collection_items[]
+  daily_analytics  daily_analytics[]
+  messages         messages[]
+  views            views[]
+  
+  // Engagement Tools
+  polls            polls[]
+  questions        questions[]
+  predictions      predictions[]
+  challenges       challenges[]
+
+  @@index([createdAt])
+  @@index([gameId, shotAt])
+  @@index([league, createdAt])
+  @@index([recordedAtVenue, createdAt])
+}
+
+model Notification {
+  id                              String           @id
+  userId                          String
+  actorId                         String
+  type                            NotificationType
+  hotTakeId                       String?
+  commentId                       String?
+  message                         String
+  read                            Boolean          @default(false)
+  createdAt                       DateTime         @default(now())
+  User_Notification_actorIdToUser User             @relation("Notification_actorIdToUser", fields: [actorId], references: [id], onDelete: Cascade)
+  HotTake                         HotTake?         @relation(fields: [hotTakeId], references: [id], onDelete: Cascade)
+  User_Notification_userIdToUser  User             @relation("Notification_userIdToUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, read])
+}
+
+model Reaction {
+  id        String   @id
+  takeId    String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+  HotTake   HotTake  @relation(fields: [takeId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id])
+
+  @@unique([takeId, userId, emoji])
+}
+
+model User {
+  id                                      String                      @id
+  email                                   String                      @unique
+  username                                String                      @unique
+  role                                    Role                        @default(USER)
+  createdAt                               DateTime                    @default(now())
+  clerkId                                 String?                     @unique
+  bio                                     String?
+  avatarUrl                               String?
+  updatedAt                               DateTime                    @default(now())
+  Comment                                 Comment[]
+  Follow_Follow_followerIdToUser          Follow[]                    @relation("Follow_followerIdToUser")
+  Follow_Follow_followingIdToUser         Follow[]                    @relation("Follow_followingIdToUser")
+  HotTake                                 HotTake[]
+  Notification_Notification_actorIdToUser Notification[]              @relation("Notification_actorIdToUser")
+  Notification_Notification_userIdToUser  Notification[]              @relation("Notification_userIdToUser")
+  Reaction                                Reaction[]
+  bookmarks                               bookmarks[]
+  check_ins                               check_ins[]
+  collection_followers                    collection_followers[]
+  collections                             collections[]
+  conversation_participants               conversation_participants[]
+  drafts                                  drafts[]
+  message_read_receipts                   message_read_receipts[]
+  messages                                messages[]
+  views                                   views[]
+  
+  // Engagement Tools
+  poll_votes                              poll_votes[]
+  question_answers                        question_answers[]
+  user_predictions                        user_predictions[]
+  challenge_completions                   challenge_completions[]
+}
+
+model bookmarks {
+  id        String   @id
+  userId    String
+  takeId    String
+  createdAt DateTime @default(now())
+  HotTake   HotTake  @relation(fields: [takeId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, takeId])
+  @@index([takeId])
+  @@index([userId])
+}
+
+model check_ins {
+  id           String    @id
+  userId       String
+  venueId      String
+  checkedInAt  DateTime  @default(now())
+  checkedOutAt DateTime?
+  User         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venues       venues    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@index([userId, checkedInAt])
+  @@index([venueId, checkedInAt])
+}
+
+model collection_followers {
+  id           String      @id
+  collectionId String
+  userId       String
+  followedAt   DateTime    @default(now())
+  collections  collections @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  User         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, userId])
+  @@index([userId])
+}
+
+model collection_items {
+  id           String      @id
+  collectionId String
+  takeId       String
+  order        Int         @default(0)
+  addedAt      DateTime    @default(now())
+  collections  collections @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  HotTake      HotTake     @relation(fields: [takeId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, takeId])
+  @@index([collectionId])
+  @@index([takeId])
+}
+
+model collections {
+  id                   String                 @id
+  name                 String
+  description          String?
+  isPublic             Boolean                @default(false)
+  coverImage           String?
+  userId               String
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime
+  collection_followers collection_followers[]
+  collection_items     collection_items[]
+  User                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([isPublic])
+  @@index([userId])
+}
+
+model conversation_participants {
+  id             String        @id
+  conversationId String
+  userId         String
+  joinedAt       DateTime      @default(now())
+  lastReadAt     DateTime?
+  conversations  conversations @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  User           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model conversations {
+  id                        String                      @id
+  type                      ConversationType            @default(DIRECT)
+  name                      String?
+  imageUrl                  String?
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime
+  conversation_participants conversation_participants[]
+  messages                  messages[]
+}
+
+model daily_analytics {
+  id       String   @id
+  takeId   String
+  date     DateTime
+  views    Int      @default(0)
+  likes    Int      @default(0)
+  comments Int      @default(0)
+  shares   Int      @default(0)
+  HotTake  HotTake  @relation(fields: [takeId], references: [id], onDelete: Cascade)
+
+  @@unique([takeId, date])
+  @@index([date])
+  @@index([takeId])
+}
+
+model drafts {
+  id           String     @id
+  userId       String
+  title        String?
+  videoUri     String
+  thumbnailUri String?
+  sport        String?
+  venue        String?
+  venueName    String?
+  visibility   Visibility @default(PUBLIC)
+  scheduledFor DateTime?
+  editMetadata Json?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime
+  User         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledFor])
+  @@index([userId])
+}
+
+model message_read_receipts {
+  id        String   @id
+  messageId String
+  userId    String
+  readAt    DateTime @default(now())
+  messages  messages @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
+}
+
+model messages {
+  id                    String                  @id
+  conversationId        String
+  senderId              String
+  content               String
+  type                  MessageType             @default(TEXT)
+  sharedTakeId          String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime
+  message_read_receipts message_read_receipts[]
+  conversations         conversations           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  User                  User                    @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  HotTake               HotTake?                @relation(fields: [sharedTakeId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
+model venues {
+  id        String      @id
   name      String
   city      String
   state     String
@@ -175,13 +325,42 @@ model Venue {
   capacity  Int?
   sport     String?
   team      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime    @default(now())
+  updatedAt DateTime
+  check_ins check_ins[]
 
   @@unique([name, city])
   @@index([latitude, longitude])
-  checkIns     CheckIn[]
-  @@map("venues")
+}
+
+model views {
+  id        String   @id
+  takeId    String
+  userId    String?
+  createdAt DateTime @default(now())
+  HotTake   HotTake  @relation(fields: [takeId], references: [id], onDelete: Cascade)
+  User      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([takeId, createdAt])
+  @@index([userId])
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+enum MessageType {
+  TEXT
+  HOTTAKE
+  SYSTEM
+}
+
+enum NotificationType {
+  LIKE
+  COMMENT
+  FOLLOW
+  MENTION
 }
 
 enum Role {
@@ -209,184 +388,130 @@ enum Visibility {
   FRIENDS
 }
 
-model Notification {
-  id          String   @id @default(cuid())
-  userId      String   // User who receives the notification
-  actorId     String   // User who triggered the notification
-  type        NotificationType
-  hotTakeId   String?  // Related Hot Take (for likes, comments)
-  commentId   String?  // Related Comment (for comment notifications)
-  message     String
-  read        Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  
-  user        User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
-  actor       User     @relation("ActorNotifications", fields: [actorId], references: [id], onDelete: Cascade)
-  hotTake     HotTake? @relation(fields: [hotTakeId], references: [id], onDelete: Cascade)
-  
-  @@index([userId, createdAt])
-  @@index([userId, read])
+enum ChallengeType {
+  POSTING
+  ENGAGEMENT
+  VIEWING
+  CREATIVE
 }
 
-enum NotificationType {
-  LIKE
-  COMMENT
-  FOLLOW
-  MENTION
-}
+// Engagement Tools
+model polls {
+  id            String         @id @default(cuid())
+  takeId        String
+  question      String
+  options       String[]       // Array of poll options
+  expiresAt     DateTime?
+  createdAt     DateTime       @default(now())
+  HotTake       HotTake        @relation(fields: [takeId], references: [id], onDelete: Cascade)
+  votes         poll_votes[]
 
-model CheckIn {
-  id           String    @id @default(cuid())
-  userId       String
-  venueId      String
-  checkedInAt  DateTime  @default(now())
-  checkedOutAt DateTime?
-  
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
-
-  @@index([venueId, checkedInAt])
-  @@index([userId, checkedInAt])
-  @@map("check_ins")
-}
-
-model Conversation {
-  id          String   @id @default(cuid())
-  type        ConversationType @default(DIRECT)
-  name        String?  // For group chats
-  imageUrl    String?  // For group chats
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  participants ConversationParticipant[]
-  messages     Message[]
-  
-  @@map("conversations")
-}
-
-enum ConversationType {
-  DIRECT
-  GROUP
-}
-
-model ConversationParticipant {
-  id             String   @id @default(cuid())
-  conversationId String
-  userId         String
-  joinedAt       DateTime @default(now())
-  lastReadAt     DateTime?
-  
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@unique([conversationId, userId])
-  @@index([userId])
-  @@map("conversation_participants")
-}
-
-model Message {
-  id             String   @id @default(cuid())
-  conversationId String
-  senderId       String
-  content        String
-  type           MessageType @default(TEXT)
-  sharedTakeId   String?  // For sharing Hot Takes
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       User         @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
-  sharedTake   HotTake?     @relation(fields: [sharedTakeId], references: [id], onDelete: SetNull)
-  readReceipts MessageReadReceipt[]
-  
-  @@index([conversationId, createdAt])
-  @@index([senderId])
-  @@map("messages")
-}
-
-enum MessageType {
-  TEXT
-  HOTTAKE
-  SYSTEM
-}
-
-model MessageReadReceipt {
-  id        String   @id @default(cuid())
-  messageId String
-  userId    String
-  readAt    DateTime @default(now())
-  
-  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@unique([messageId, userId])
-  @@index([userId])
-  @@map("message_read_receipts")
-}
-
-model Collection {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  isPublic    Boolean  @default(false)
-  coverImage  String?  // URL to cover image
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items      CollectionItem[]
-  followers  CollectionFollower[]
-  
-  @@index([userId])
-  @@index([isPublic])
-  @@map("collections")
-}
-
-model CollectionItem {
-  id           String   @id @default(cuid())
-  collectionId String
-  takeId       String
-  order        Int      @default(0)
-  addedAt      DateTime @default(now())
-  
-  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  hotTake    HotTake    @relation(fields: [takeId], references: [id], onDelete: Cascade)
-  
-  @@unique([collectionId, takeId])
-  @@index([collectionId])
   @@index([takeId])
-  @@map("collection_items")
+  @@map("polls")
 }
 
-model CollectionFollower {
-  id           String   @id @default(cuid())
-  collectionId String
-  userId       String
-  followedAt   DateTime @default(now())
-  
-  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@unique([collectionId, userId])
+model poll_votes {
+  id            String         @id @default(cuid())
+  pollId        String
+  userId        String
+  optionIndex   Int            // Which option they voted for
+  createdAt     DateTime       @default(now())
+  polls         polls          @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  User          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId]) // One vote per user per poll
+  @@index([pollId])
   @@index([userId])
-  @@map("collection_followers")
+  @@map("poll_votes")
 }
 
-model Bookmark {
-  id        String   @id @default(cuid())
-  userId    String
-  takeId    String
-  createdAt DateTime @default(now())
-  
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  hotTake HotTake @relation(fields: [takeId], references: [id], onDelete: Cascade)
-  
-  @@unique([userId, takeId])
-  @@index([userId])
+model questions {
+  id            String         @id @default(cuid())
+  takeId        String
+  text          String
+  createdAt     DateTime       @default(now())
+  HotTake       HotTake        @relation(fields: [takeId], references: [id], onDelete: Cascade)
+  answers       question_answers[]
+
   @@index([takeId])
-  @@map("bookmarks")
+  @@map("questions")
 }
 
-// REMOVED: Article, FanReel, Reply, RecordingDraft models
-// REMOVED: ReplyKind, ReelStatus, RecordingStatus enums
+model question_answers {
+  id            String         @id @default(cuid())
+  questionId    String
+  userId        String
+  text          String
+  createdAt     DateTime       @default(now())
+  questions     questions      @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  User          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@index([userId])
+  @@map("question_answers")
+}
+
+model predictions {
+  id            String         @id @default(cuid())
+  takeId        String
+  question      String
+  options       String[]       // Prediction options
+  correctOption Int?           // Index of correct answer (set after event)
+  expiresAt     DateTime
+  createdAt     DateTime       @default(now())
+  resolvedAt   DateTime?
+  HotTake       HotTake        @relation(fields: [takeId], references: [id], onDelete: Cascade)
+  predictions   user_predictions[]
+
+  @@index([takeId])
+  @@index([expiresAt])
+  @@map("predictions")
+}
+
+model user_predictions {
+  id            String         @id @default(cuid())
+  predictionId  String
+  userId        String
+  optionIndex   Int
+  points        Int            @default(0) // Points earned if correct
+  createdAt     DateTime       @default(now())
+  predictions   predictions    @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  User          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([predictionId, userId])
+  @@index([predictionId])
+  @@index([userId])
+  @@map("user_predictions")
+}
+
+model challenges {
+  id            String         @id @default(cuid())
+  takeId        String?
+  title         String
+  description   String
+  type          ChallengeType
+  requirement   String         // e.g., "Post 5 Hot Takes", "Get 100 views"
+  reward        String         // e.g., "Special Badge", "100 points"
+  expiresAt     DateTime?
+  createdAt     DateTime       @default(now())
+  HotTake       HotTake?       @relation(fields: [takeId], references: [id], onDelete: Cascade)
+  completions   challenge_completions[]
+
+  @@index([type])
+  @@index([expiresAt])
+  @@map("challenges")
+}
+
+model challenge_completions {
+  id            String         @id @default(cuid())
+  challengeId   String
+  userId        String
+  completedAt   DateTime       @default(now())
+  challenges    challenges     @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  User          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
+  @@index([challengeId])
+  @@index([userId])
+  @@map("challenge_completions")
+}

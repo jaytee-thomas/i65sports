@@ -18,12 +18,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ bookmarks: [] });
     }
 
-    const bookmarks = await prisma.bookmark.findMany({
+    const bookmarks = await (prisma as any).bookmarks.findMany({
       where: { userId: dbUser.id },
       include: {
-        hotTake: {
+        HotTake: {
           include: {
-            author: {
+            User: {
               select: {
                 id: true,
                 username: true,
@@ -32,8 +32,8 @@ export async function GET(request: Request) {
             },
             _count: {
               select: {
-                reactions: true,
-                comments: true,
+                Reaction: true,
+                Comment: true,
               },
             },
           },
@@ -44,7 +44,20 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.json({ bookmarks });
+    // Map response to frontend-friendly format
+    const mappedBookmarks = bookmarks.map((bookmark: any) => ({
+      ...bookmark,
+      hotTake: {
+        ...bookmark.HotTake,
+        author: bookmark.HotTake.User,
+        _count: {
+          reactions: bookmark.HotTake._count.Reaction,
+          comments: bookmark.HotTake._count.Comment,
+        },
+      },
+    }));
+
+    return NextResponse.json({ bookmarks: mappedBookmarks });
   } catch (error) {
     console.error('[bookmarks-get]:', error);
     return NextResponse.json({ error: 'Failed to fetch bookmarks' }, { status: 500 });
@@ -77,7 +90,7 @@ export async function POST(request: Request) {
     }
 
     // Check if already bookmarked
-    const existing = await prisma.bookmark.findUnique({
+    const existing = await (prisma as any).bookmarks.findUnique({
       where: {
         userId_takeId: {
           userId: dbUser.id,
@@ -88,14 +101,15 @@ export async function POST(request: Request) {
 
     if (existing) {
       // Remove bookmark
-      await prisma.bookmark.delete({
+      await (prisma as any).bookmarks.delete({
         where: { id: existing.id },
       });
       return NextResponse.json({ bookmarked: false });
     } else {
-      // Add bookmark
-      await prisma.bookmark.create({
+      // Add bookmark with generated ID
+      await (prisma as any).bookmarks.create({
         data: {
+          id: `bookmark_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
           userId: dbUser.id,
           takeId,
         },
@@ -107,4 +121,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to toggle bookmark' }, { status: 500 });
   }
 }
-

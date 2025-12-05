@@ -13,28 +13,40 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id: collectionId } = params;
     const body = await request.json();
     const { takeId } = body;
+
+    if (!takeId) {
+      return NextResponse.json({ error: 'takeId required' }, { status: 400 });
+    }
 
     let dbUser = await prisma.user.findUnique({
       where: { clerkId: clerkUser.id },
     });
 
+    if (!dbUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
     // Check ownership
-    const collection = await prisma.collection.findUnique({
-      where: { id },
+    const collection = await (prisma as any).collections.findUnique({
+      where: { id: collectionId },
     });
 
-    if (!collection || collection.userId !== dbUser?.id) {
+    if (!collection) {
+      return NextResponse.json({ error: 'Collection not found' }, { status: 404 });
+    }
+
+    if (collection.userId !== dbUser.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     // Check if already exists
-    const existing = await prisma.collectionItem.findUnique({
+    const existing = await (prisma as any).collection_items.findUnique({
       where: {
         collectionId_takeId: {
-          collectionId: id,
+          collectionId,
           takeId,
         },
       },
@@ -45,22 +57,23 @@ export async function POST(
     }
 
     // Get current max order
-    const maxOrder = await prisma.collectionItem.findFirst({
-      where: { collectionId: id },
+    const maxOrder = await (prisma as any).collection_items.findFirst({
+      where: { collectionId },
       orderBy: { order: 'desc' },
       select: { order: true },
     });
 
-    const item = await prisma.collectionItem.create({
+    const item = await (prisma as any).collection_items.create({
       data: {
-        collectionId: id,
+        id: `ci_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        collectionId,
         takeId,
         order: (maxOrder?.order || 0) + 1,
       },
       include: {
-        hotTake: {
+        HotTake: {
           include: {
-            author: {
+            User: {
               select: {
                 id: true,
                 username: true,
@@ -71,10 +84,19 @@ export async function POST(
       },
     });
 
+    // Update collection's updatedAt
+    await (prisma as any).collections.update({
+      where: { id: collectionId },
+      data: { updatedAt: new Date() },
+    });
+
     return NextResponse.json({ item }, { status: 201 });
   } catch (error) {
     console.error('[collection-item-post]:', error);
-    return NextResponse.json({ error: 'Failed to add item' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Failed to add item',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
 
@@ -89,7 +111,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id: collectionId } = params;
     const { searchParams } = new URL(request.url);
     const takeId = searchParams.get('takeId');
 
@@ -101,28 +123,44 @@ export async function DELETE(
       where: { clerkId: clerkUser.id },
     });
 
+    if (!dbUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
     // Check ownership
-    const collection = await prisma.collection.findUnique({
-      where: { id },
+    const collection = await (prisma as any).collections.findUnique({
+      where: { id: collectionId },
     });
 
-    if (!collection || collection.userId !== dbUser?.id) {
+    if (!collection) {
+      return NextResponse.json({ error: 'Collection not found' }, { status: 404 });
+    }
+
+    if (collection.userId !== dbUser.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    await prisma.collectionItem.delete({
+    await (prisma as any).collection_items.delete({
       where: {
         collectionId_takeId: {
-          collectionId: id,
+          collectionId,
           takeId,
         },
       },
     });
 
+    // Update collection's updatedAt
+    await (prisma as any).collections.update({
+      where: { id: collectionId },
+      data: { updatedAt: new Date() },
+    });
+
     return NextResponse.json({ message: 'Item removed' });
   } catch (error) {
     console.error('[collection-item-delete]:', error);
-    return NextResponse.json({ error: 'Failed to remove item' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Failed to remove item',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
-

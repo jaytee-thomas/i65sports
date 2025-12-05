@@ -1,34 +1,25 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  SafeAreaView,
-  Dimensions,
-  Animated,
   ScrollView,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
+  TouchableOpacity,
+  ActivityIndicator,
   Alert,
+  TextInput,
 } from 'react-native';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
-import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-import { Share } from 'react-native';
-import { useAuth, useUser } from '@clerk/clerk-expo';
-import Toast from 'react-native-toast-message';
+import { useAuth } from '@clerk/clerk-expo';
+import { Video, ResizeMode } from 'expo-av';
+import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
-import socketService from '../services/socket';
-import { LiveReactionBar } from '../components/LiveReactionBar';
-import { FloatingEmojiContainer } from '../components/FloatingEmojiContainer';
-import { LiveChatRoom } from '../components/LiveChatRoom';
-import { TrendingBadge } from '../components/TrendingBadge';
-import { BookmarkButton } from '../components/BookmarkButton';
-import { AddToCollectionSheet } from '../components/AddToCollectionSheet';
+import Toast from 'react-native-toast-message';
+import PollCard from '../components/PollCard';
+import QuestionCard from '../components/QuestionCard';
+import PredictionCard from '../components/PredictionCard';
+import ChallengeCard from '../components/ChallengeCard';
 
-const { width, height } = Dimensions.get('window');
 const API_URL = 'http://192.168.86.226:3000/api';
 
 type RouteParams = {
@@ -36,13 +27,15 @@ type RouteParams = {
     hotTake: {
       id: string;
       title: string;
+      description?: string;
       videoUrl: string;
-      venueName: string | null;
-      createdAt: string;
+      thumbnailUrl?: string;
       author: {
         id: string;
         username: string;
+        avatarUrl?: string;
       };
+      createdAt: string;
       _count?: {
         reactions: number;
         comments: number;
@@ -51,122 +44,135 @@ type RouteParams = {
   };
 };
 
-interface Comment {
-  id: string;
-  body: string;
-  createdAt: string;
-  author: {
-    id: string;
-    username: string;
-    avatarUrl?: string;
-  };
-}
-
 export default function HotTakeDetailScreen() {
   const route = useRoute<RouteProp<RouteParams, 'HotTakeDetail'>>();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { hotTake } = route.params;
   const { getToken } = useAuth();
-  const { user } = useUser();
 
-  const videoRef = useRef<Video>(null);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(hotTake._count?.reactions || 0);
-  const [comments, setComments] = useState<Comment[]>([]);
+  const [hasReacted, setHasReacted] = useState(false);
+  const [reactionsCount, setReactionsCount] = useState(hotTake?._count?.reactions || 0);
+  const [commentsCount, setCommentsCount] = useState(hotTake?._count?.comments || 0);
+  const [loading, setLoading] = useState(false);
+  const [pollId, setPollId] = useState<string | null>(null);
+  const [questionId, setQuestionId] = useState<string | null>(null);
+  const [predictionId, setPredictionId] = useState<string | null>(null);
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [loadingPoll, setLoadingPoll] = useState(true);
+  const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
-  const [showComments, setShowComments] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showControls, setShowControls] = useState(true);
-  const [duration, setDuration] = useState(0);
-  const [position, setPosition] = useState(0);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const controlsOpacity = useRef(new Animated.Value(1)).current;
-  const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
+  // Safety check for hotTake data
+  if (!hotTake) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Unable to load hot take details</Text>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
-  // Live features state
-  const [showChat, setShowChat] = useState(false);
-  const [chatMessages, setChatMessages] = useState<any[]>([]);
-  const [reactionCounts, setReactionCounts] = useState<{ [emoji: string]: number }>({});
-  const [floatingEmojis, setFloatingEmojis] = useState<Array<{ emoji: string; timestamp: number }>>([]);
-  const [trendingLabel, setTrendingLabel] = useState('');
-  const [showAddToCollection, setShowAddToCollection] = useState(false);
+  // Safety check for author data
+  const author = hotTake.author || { id: '', username: 'Unknown', avatarUrl: undefined };
 
   useEffect(() => {
+    checkReactionStatus();
+    checkForEngagementTools();
     loadComments();
   }, []);
 
-  // Socket connection for live features
-  useEffect(() => {
-    const gameId = hotTake.id; // Using takeId as gameId for now
-    
-    // Join game room
-    socketService.joinGame(gameId);
+  const getTimeSince = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-    // Listen for reactions
-    const reactionHandler = (data: any) => {
-      console.log('⚡ Received reaction:', data);
-      
-      // Update reaction counts
-      setReactionCounts((prev) => ({
-        ...prev,
-        [data.emoji]: (prev[data.emoji] || 0) + 1,
-      }));
+    if (seconds < 60) return 'Just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  };
 
-      // Add floating emoji
-      setFloatingEmojis((prev) => [
-        ...prev,
-        { emoji: data.emoji, timestamp: Date.now() },
-      ]);
-    };
-
-    // Listen for chat messages
-    const messageHandler = (data: any) => {
-      console.log('💬 Received message:', data);
-      setChatMessages((prev) => [...prev, data]);
-    };
-
-    socketService.onReaction(reactionHandler);
-    socketService.onMessage(messageHandler);
-
-    return () => {
-      socketService.leaveGame(gameId);
-      socketService.removeListener('reaction-received', reactionHandler);
-      socketService.removeListener('message-received', messageHandler);
-    };
-  }, [hotTake.id]);
-
-  useEffect(() => {
-    if (showControls) {
-      Animated.timing(controlsOpacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-      resetControlsTimeout();
-    } else {
-      Animated.timing(controlsOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    }
-
-    return () => {
-      if (controlsTimeout.current) {
-        clearTimeout(controlsTimeout.current);
+  const checkReactionStatus = async () => {
+    try {
+      const token = await getToken();
+      const response = await axios.get(
+        `${API_URL}/hot-takes/${hotTake.id}/reactions`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      if (response.data) {
+        setHasReacted(response.data.hasReacted || false);
+        setReactionsCount(response.data.reactionCount || 0);
       }
-    };
-  }, [showControls]);
-
-  const resetControlsTimeout = () => {
-    if (controlsTimeout.current) {
-      clearTimeout(controlsTimeout.current);
+    } catch (error) {
+      console.error('Failed to check reaction status:', error);
     }
-    controlsTimeout.current = setTimeout(() => {
-      setShowControls(false);
-    }, 3000);
+  };
+
+  const checkForEngagementTools = async () => {
+    try {
+      setLoadingPoll(true);
+      console.log('🔍 Checking for engagement tools on Hot Take:', hotTake.id);
+      const token = await getToken();
+      console.log('🔑 Got token, calling API...');
+      
+      const response = await axios.get(
+        `${API_URL}/hot-takes/${hotTake.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      
+      console.log('📊 Hot Take API response:', JSON.stringify(response.data, null, 2));
+      
+      // Check for poll
+      if (response.data?.poll) {
+        console.log('✅ Poll found! ID:', response.data.poll.id);
+        setPollId(response.data.poll.id);
+      } else {
+        console.log('❌ No poll found');
+      }
+
+      // Check for question
+      if (response.data?.question) {
+        console.log('✅ Question found! ID:', response.data.question.id);
+        setQuestionId(response.data.question.id);
+      } else {
+        console.log('❌ No question found');
+      }
+
+      // Check for prediction
+      if (response.data?.prediction) {
+        console.log('✅ Prediction found! ID:', response.data.prediction.id);
+        setPredictionId(response.data.prediction.id);
+      } else {
+        console.log('❌ No prediction found');
+      }
+
+      // Check for challenge
+      if (response.data?.challenge) {
+        console.log('✅ Challenge found! ID:', response.data.challenge.id);
+        setChallengeId(response.data.challenge.id);
+      } else {
+        console.log('❌ No challenge found');
+      }
+    } catch (error) {
+      console.error('💥 Failed to check for engagement tools:', error);
+    } finally {
+      setLoadingPoll(false);
+    }
   };
 
   const loadComments = async () => {
@@ -175,696 +181,415 @@ export default function HotTakeDetailScreen() {
       const response = await axios.get(
         `${API_URL}/hot-takes/${hotTake.id}/comments`,
         {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         }
       );
-      setComments(response.data.comments || []);
-    } catch (error) {
-      console.error('Error loading comments:', error);
-    }
-  };
-
-  const togglePlayback = async () => {
-    setShowControls(true);
-    resetControlsTimeout();
-
-    if (videoRef.current) {
-      if (isPlaying) {
-        await videoRef.current.pauseAsync();
-      } else {
-        await videoRef.current.playAsync();
+      if (response.data?.comments) {
+        setComments(response.data.comments);
       }
-      setIsPlaying(!isPlaying);
+    } catch (error) {
+      console.error('Failed to load comments:', error);
     }
   };
 
-  const handleVideoPress = () => {
-    togglePlayback();
-    setShowControls(true);
-    resetControlsTimeout();
+  const handleSubmitComment = async () => {
+    if (!newComment.trim()) return;
+
+    try {
+      setIsSubmittingComment(true);
+      const token = await getToken();
+      const response = await axios.post(
+        `${API_URL}/hot-takes/${hotTake.id}/comments`,
+        {
+          body: newComment.trim(),
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.data?.comment) {
+        setComments((prev) => [response.data.comment, ...prev]);
+        setNewComment('');
+        setCommentsCount((prev) => prev + 1);
+        Toast.show({
+          type: 'success',
+          text1: 'Comment added',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to add comment:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to add comment',
+      });
+    } finally {
+      setIsSubmittingComment(false);
+    }
   };
 
-  const handleLike = async () => {
+  const handleReaction = async () => {
     try {
-      const newLiked = !isLiked;
-      const newCount = newLiked ? likeCount + 1 : likeCount - 1;
-      
-      // Optimistic update
-      setIsLiked(newLiked);
-      setLikeCount(newCount);
-
-      // Animate
-      Animated.sequence([
-        Animated.timing(scaleAnim, {
-          toValue: 1.3,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      // API call
+      setLoading(true);
       const token = await getToken();
-      await axios.post(
+      const response = await axios.post(
         `${API_URL}/hot-takes/${hotTake.id}/reactions`,
         { type: 'LIKE' },
         {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
         }
       );
 
-      Toast.show({
-        type: 'success',
-        text1: newLiked ? 'Liked! ❤️' : 'Unliked',
-        position: 'bottom',
-        visibilityTime: 1000,
-      });
+      // Toggle hasReacted based on response
+      if (response.data) {
+        setHasReacted(response.data.reacted || false);
+        setReactionsCount((prev) => (response.data.reacted ? prev + 1 : Math.max(0, prev - 1)));
+      }
     } catch (error) {
-      console.error('Error liking:', error);
-      
-      // Revert on error
-      setIsLiked(!isLiked);
-      setLikeCount(isLiked ? likeCount + 1 : likeCount - 1);
-
-      Toast.show({
-        type: 'error',
-        text1: 'Failed to like',
-        text2: 'Please try again',
-        position: 'bottom',
-      });
-    }
-  };
-
-  const handleComment = async () => {
-    if (!newComment.trim() || isSubmitting) return;
-
-    try {
-      setIsSubmitting(true);
-      const token = await getToken();
-      
-      const response = await axios.post(
-        `${API_URL}/hot-takes/${hotTake.id}/comments`,
-        { text: newComment.trim() },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      setComments([response.data.comment, ...comments]);
-      setNewComment('');
-
-      Toast.show({
-        type: 'success',
-        text1: 'Comment Posted! 💬',
-        position: 'bottom',
-        visibilityTime: 2000,
-      });
-    } catch (error) {
-      console.error('Error posting comment:', error);
-
-      Toast.show({
-        type: 'error',
-        text1: 'Failed to post comment',
-        text2: 'Please try again',
-        position: 'bottom',
-      });
+      console.error('Failed to toggle reaction:', error);
+      Alert.alert('Error', 'Failed to update reaction');
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
-  const handleShare = async () => {
-    try {
-      const shareUrl = hotTake.videoUrl;
-      const message = `Check out this Hot Take: "${hotTake.title}" by @${hotTake.author.username} on i65Sports! 🔥\n\n${shareUrl}`;
-
-      await Share.share({
-        message: message,
-        url: shareUrl,
-        title: hotTake.title,
-      });
-    } catch (error) {
-      Alert.alert('Error', 'Failed to share Hot Take');
-      console.error('Share error:', error);
-    }
+  const handleCommentAdded = () => {
+    setCommentsCount((prev) => prev + 1);
   };
-
-  const handleShareToDM = () => {
-    navigation.navigate('SelectRecipients' as never, {
-      sharedTakeId: hotTake.id,
-      sharedTakeTitle: hotTake.title || 'Hot Take',
-    } as never);
-  };
-
-  const handleReaction = (emoji: string) => {
-    const gameId = hotTake.id;
-    
-    socketService.sendReaction({
-      gameId,
-      takeId: hotTake.id,
-      emoji,
-      userId: user?.id || 'current-user-id',
-      username: user?.username || 'current-user',
-    });
-  };
-
-  const handleSendChatMessage = (message: string) => {
-    const gameId = hotTake.id;
-    
-    socketService.sendChatMessage({
-      gameId,
-      userId: user?.id || 'current-user-id',
-      username: user?.username || 'current-user',
-      message,
-    });
-  };
-
-  const handlePlaybackStatusUpdate = (status: AVPlaybackStatus) => {
-    if (status.isLoaded) {
-      setIsPlaying(status.isPlaying);
-      setDuration(status.durationMillis || 0);
-      setPosition(status.positionMillis || 0);
-    }
-  };
-
-  const formatTime = (millis: number) => {
-    const totalSeconds = Math.floor(millis / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  const progress = duration > 0 ? position / duration : 0;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <TouchableOpacity
-        style={styles.closeButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Ionicons name="close" size={32} color="#FFFFFF" />
-      </TouchableOpacity>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Hot Take</Text>
+        <View style={{ width: 24 }} />
+      </View>
 
-      <TouchableOpacity
-        style={styles.videoContainer}
-        onPress={handleVideoPress}
-        activeOpacity={1}
-      >
+      <ScrollView style={styles.content}>
+        {/* Video */}
         <Video
-          ref={videoRef}
           source={{ uri: hotTake.videoUrl }}
           style={styles.video}
+          useNativeControls
           resizeMode={ResizeMode.CONTAIN}
-          shouldPlay
           isLooping
-          useNativeControls={false}
-          onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+          shouldPlay={isPlaying}
         />
 
-        {/* Video Controls Overlay */}
-        {showControls && (
-          <Animated.View
-            style={[styles.videoControls, { opacity: controlsOpacity }]}
-          >
-            <View style={styles.progressContainer}>
-              <View style={styles.progressBar}>
-                <View
-                  style={[styles.progressFill, { width: `${progress * 100}%` }]}
-                />
-              </View>
-              <Text style={styles.timeText}>
-                {formatTime(position)} / {formatTime(duration)}
-              </Text>
-            </View>
-          </Animated.View>
-        )}
+        {/* Hot Take Info */}
+        <View style={styles.infoSection}>
+          <Text style={styles.title}>{hotTake.title}</Text>
+          {hotTake.description && (
+            <Text style={styles.description}>{hotTake.description}</Text>
+          )}
 
-        {/* Play/Pause Overlay */}
-        {showControls && !isPlaying && (
-          <TouchableOpacity
-            style={styles.playOverlay}
-            onPress={togglePlayback}
-            activeOpacity={1}
-          >
-            <Ionicons name="play-circle" size={80} color="#FFFFFF" />
-          </TouchableOpacity>
-        )}
-      </TouchableOpacity>
-
-      {/* Info Overlay */}
-      {!showComments && !showChat && showControls && (
-        <Animated.View
-          style={[styles.infoOverlay, { opacity: controlsOpacity }]}
-        >
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>{hotTake.title}</Text>
-            {trendingLabel && (
-              <TrendingBadge label={trendingLabel} />
-            )}
-          </View>
-          <Text style={styles.meta}>
-            @{hotTake.author.username} • {hotTake.venueName || 'Unknown Venue'}
-          </Text>
-
-          {/* Live Reaction Bar */}
-          <LiveReactionBar
-            takeId={hotTake.id}
-            gameId={hotTake.id}
-            onReact={handleReaction}
-            reactionCounts={reactionCounts}
-          />
-
-          <View style={styles.actions}>
-            <TouchableOpacity style={styles.actionButton} onPress={handleLike}>
-              <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-                <Ionicons
-                  name={isLiked ? 'heart' : 'heart-outline'}
-                  size={32}
-                  color={isLiked ? '#FF1493' : '#FFFFFF'}
-                />
-              </Animated.View>
-              <Text style={styles.actionText}>
-                {likeCount > 0 ? likeCount : 'Like'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => setShowComments(true)}
-            >
-              <Ionicons name="chatbubble-outline" size={32} color="#FFFFFF" />
-              <Text style={styles.actionText}>
-                {comments.length > 0 ? comments.length : 'Comment'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => setShowChat(true)}
-            >
-              <Ionicons name="people-outline" size={32} color="#FFFFFF" />
-              <Text style={styles.actionText}>Live Chat</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => {
-                Alert.alert(
-                  'Share Hot Take',
-                  'Choose how to share',
-                  [
-                    {
-                      text: 'Share via DM',
-                      onPress: handleShareToDM,
-                    },
-                    {
-                      text: 'Share externally',
-                      onPress: handleShare,
-                    },
-                    {
-                      text: 'Cancel',
-                      style: 'cancel',
-                    },
-                  ]
-                );
-              }}
-            >
-              <Ionicons name="share-outline" size={32} color="#FFFFFF" />
-              <Text style={styles.actionText}>Share</Text>
-            </TouchableOpacity>
-
-            {/* Bookmark Button */}
-            <View style={styles.actionButton}>
-              <BookmarkButton
-                takeId={hotTake.id}
-                size={32}
-                onToggle={(bookmarked) => {
-                  console.log('Bookmarked:', bookmarked);
-                }}
-              />
-              <Text style={styles.actionText}>Save</Text>
-            </View>
-
-            {/* Add to Collection */}
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => setShowAddToCollection(true)}
-            >
-              <Ionicons name="folder-outline" size={32} color="#FFFFFF" />
-              <Text style={styles.actionText}>Collection</Text>
-            </TouchableOpacity>
-
-            {/* Edit Video - Only for own videos */}
-            {user?.id === hotTake.author.id && (
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => {
-                  navigation.navigate('VideoEditor' as never, {
-                    videoUri: hotTake.videoUrl,
-                    onSave: (editedUri: string, metadata: any) => {
-                      Alert.alert(
-                        'Replace Video',
-                        'This will replace your Hot Take with the edited version. Continue?',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Replace',
-                            onPress: async () => {
-                              // TODO: Call API to update video with edited version
-                              console.log('Replace video:', editedUri, metadata);
-                              Toast.show({
-                                type: 'info',
-                                text1: 'Video editing',
-                                text2: 'This feature is coming soon!',
-                                position: 'bottom',
-                              });
-                            },
-                          },
-                        ]
-                      );
-                    },
-                  } as never);
-                }}
-              >
-                <Ionicons name="create-outline" size={32} color="#FFFFFF" />
-                <Text style={styles.actionText}>Edit</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </Animated.View>
-      )}
-
-      {/* Floating Emojis */}
-      <FloatingEmojiContainer emojis={floatingEmojis} />
-
-      {/* Live Chat Room */}
-      {showChat && (
-        <View style={styles.chatOverlay}>
-          <LiveChatRoom
-            gameId={hotTake.id}
-            onSendMessage={handleSendChatMessage}
-            messages={chatMessages}
-            onClose={() => setShowChat(false)}
-          />
-        </View>
-      )}
-
-      {/* Comments Section */}
-      {showComments && (
-        <KeyboardAvoidingView
-          style={styles.commentsContainer}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={styles.commentsHeader}>
-            <Text style={styles.commentsTitle}>
-              Comments ({comments.length})
+          {/* Author & Date */}
+          <View style={styles.metaRow}>
+            <Text style={styles.author}>@{author.username}</Text>
+            <Text style={styles.date}>
+              {getTimeSince(hotTake.createdAt)}
             </Text>
-            <TouchableOpacity onPress={() => setShowComments(false)}>
-              <Ionicons name="close" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.commentsList}>
-            {comments.length === 0 ? (
-              <View style={styles.emptyComments}>
-                <Ionicons name="chatbubble-outline" size={48} color="#8892A6" />
-                <Text style={styles.emptyText}>No comments yet</Text>
-                <Text style={styles.emptySubtext}>Be the first to comment!</Text>
-              </View>
-            ) : (
-              comments.map((comment) => (
-                <View key={comment.id} style={styles.comment}>
-                  <View style={styles.commentAvatar}>
-                    <Ionicons name="person" size={16} color="#00FF9F" />
-                  </View>
-                  <View style={styles.commentContent}>
-                    <Text style={styles.commentUsername}>
-                      @{comment.author.username}
-                    </Text>
-                    <Text style={styles.commentText}>{comment.body}</Text>
-                    <Text style={styles.commentDate}>
-                      {new Date(comment.createdAt).toLocaleDateString()}
-                    </Text>
-                  </View>
-                </View>
-              ))
-            )}
-          </ScrollView>
+          {/* Actions */}
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={handleReaction}
+              disabled={loading}
+            >
+              <Ionicons
+                name={hasReacted ? 'heart' : 'heart-outline'}
+                size={24}
+                color={hasReacted ? '#FF1493' : '#fff'}
+              />
+              <Text style={styles.actionText}>{reactionsCount}</Text>
+            </TouchableOpacity>
 
+            <View style={styles.actionButton}>
+              <Ionicons name="chatbubble-outline" size={24} color="#fff" />
+              <Text style={styles.actionText}>{commentsCount}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Poll (if exists) */}
+        {!loadingPoll && pollId && (
+          <View style={styles.pollContainer}>
+            <PollCard pollId={pollId} />
+          </View>
+        )}
+
+        {/* Question (if exists) */}
+        {!loadingPoll && questionId && (
+          <View style={styles.pollContainer}>
+            <QuestionCard questionId={questionId} />
+          </View>
+        )}
+
+        {/* Prediction (if exists) */}
+        {!loadingPoll && predictionId && (
+          <View style={styles.pollContainer}>
+            <PredictionCard predictionId={predictionId} />
+          </View>
+        )}
+
+        {/* Challenge (if exists) */}
+        {!loadingPoll && challengeId && (
+          <View style={styles.pollContainer}>
+            <ChallengeCard challengeId={challengeId} />
+          </View>
+        )}
+
+        {/* Comments */}
+        <View style={styles.commentsSection}>
+          <Text style={styles.commentsTitle}>Comments ({commentsCount})</Text>
+          
+          {/* Comment Input */}
           <View style={styles.commentInputContainer}>
             <TextInput
-              style={styles.input}
+              style={styles.commentInput}
               placeholder="Add a comment..."
               placeholderTextColor="#8892A6"
               value={newComment}
               onChangeText={setNewComment}
               multiline
-              maxLength={500}
             />
             <TouchableOpacity
-              style={[
-                styles.sendButton,
-                (!newComment.trim() || isSubmitting) && styles.sendButtonDisabled,
-              ]}
-              onPress={handleComment}
-              disabled={!newComment.trim() || isSubmitting}
+              style={[styles.sendButton, isSubmittingComment && styles.sendButtonDisabled]}
+              onPress={handleSubmitComment}
+              disabled={isSubmittingComment || !newComment.trim()}
             >
-              {isSubmitting ? (
-                <Ionicons name="hourglass" size={20} color="#FFFFFF" />
+              {isSubmittingComment ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <Ionicons name="send" size={20} color="#FFFFFF" />
               )}
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      )}
 
-      {/* Add to Collection Sheet */}
-      <AddToCollectionSheet
-        visible={showAddToCollection}
-        onClose={() => setShowAddToCollection(false)}
-        takeId={hotTake.id}
-        onCreateNew={() => {
-          navigation.navigate('CreateCollection' as never);
-        }}
-      />
-    </SafeAreaView>
+          {/* Comments List */}
+          {comments.length === 0 ? (
+            <View style={styles.emptyComments}>
+              <Text style={styles.emptyCommentsText}>No comments yet</Text>
+            </View>
+          ) : (
+            comments.map((comment) => (
+              <View key={comment.id} style={styles.commentItem}>
+                <View style={styles.commentAvatar}>
+                  <Ionicons name="person" size={20} color="#FFFFFF" />
+                </View>
+                <View style={styles.commentContent}>
+                  <View style={styles.commentHeader}>
+                    <Text style={styles.commentAuthor}>
+                      @{comment.author?.username || 'Unknown'}
+                    </Text>
+                    <Text style={styles.commentTime}>
+                      {getTimeSince(comment.createdAt)}
+                    </Text>
+                  </View>
+                  <Text style={styles.commentText}>
+                    {comment.body || comment.text}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: '#0A0E27',
   },
-  closeButton: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    zIndex: 10,
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 22,
+    justifyContent: 'space-between',
+    padding: 16,
+    paddingTop: 50,
+    backgroundColor: '#0A0E27',
   },
-  videoContainer: {
+  headerTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  content: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   video: {
-    width: width,
-    height: height,
-  },
-  videoControls: {
-    position: 'absolute',
-    bottom: 180,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-  },
-  progressContainer: {
     width: '100%',
+    aspectRatio: 9 / 16,
+    backgroundColor: '#000',
   },
-  progressBar: {
-    width: '100%',
-    height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#00FF9F',
-  },
-  timeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  playOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-  infoOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-  },
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
+  infoSection: {
+    padding: 16,
+    backgroundColor: '#0A0E27',
   },
   title: {
+    color: '#fff',
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-    flex: 1,
+    marginBottom: 8,
   },
-  chatOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '80%',
-    backgroundColor: '#0A0E27',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  meta: {
-    fontSize: 14,
+  description: {
     color: '#B8C5D6',
-    marginBottom: 20,
+    fontSize: 14,
+    marginBottom: 12,
   },
-  actions: {
+  metaRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  author: {
+    color: '#00FF9F',
+    fontSize: 14,
+    fontWeight: '600',
+    marginRight: 12,
+  },
+  date: {
+    color: '#8892A6',
+    fontSize: 12,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 24,
   },
   actionButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   actionText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  commentsContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: height * 0.6,
-    backgroundColor: '#1A1F3A',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  commentsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3A4166',
-  },
-  commentsTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  commentsList: {
-    flex: 1,
-    padding: 20,
-  },
-  emptyComments: {
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginTop: 16,
-  },
-  emptySubtext: {
+    color: '#fff',
     fontSize: 14,
-    color: '#8892A6',
-    marginTop: 8,
   },
-  comment: {
-    flexDirection: 'row',
-    marginBottom: 20,
+  pollContainer: {
+    padding: 16,
+    backgroundColor: '#0A0E27',
   },
-  commentAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  errorContainer: {
+    flex: 1,
     backgroundColor: '#0A0E27',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    padding: 20,
   },
-  commentContent: {
-    flex: 1,
+  errorText: {
+    color: '#fff',
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: 'center',
   },
-  commentUsername: {
-    fontSize: 14,
+  backButton: {
+    backgroundColor: '#00FF9F',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  backButtonText: {
+    color: '#0A0E27',
+    fontSize: 16,
     fontWeight: '600',
-    color: '#00FF9F',
-    marginBottom: 4,
   },
-  commentText: {
-    fontSize: 14,
+  commentsSection: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1A1F3A',
+  },
+  commentsTitle: {
     color: '#FFFFFF',
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  commentDate: {
-    fontSize: 12,
-    color: '#8892A6',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
   },
   commentInputContainer: {
     flexDirection: 'row',
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#3A4166',
-    alignItems: 'center',
-    gap: 12,
+    alignItems: 'flex-end',
+    marginBottom: 16,
+    gap: 8,
   },
-  input: {
+  commentInput: {
     flex: 1,
-    backgroundColor: '#0A0E27',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: '#1A1F3A',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     color: '#FFFFFF',
     fontSize: 14,
+    minHeight: 40,
     maxHeight: 100,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#00FF9F',
     justifyContent: 'center',
     alignItems: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: '#3A4166',
     opacity: 0.5,
+  },
+  emptyComments: {
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  emptyCommentsText: {
+    color: '#8892A6',
+    fontSize: 14,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    gap: 12,
+  },
+  commentAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1A1F3A',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  commentContent: {
+    flex: 1,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  commentAuthor: {
+    color: '#00FF9F',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  commentTime: {
+    color: '#8892A6',
+    fontSize: 12,
+  },
+  commentText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    lineHeight: 20,
   },
 });

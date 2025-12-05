@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     const hotTakes = await prisma.hotTake.findMany({
       where: whereClause,
       include: {
-        author: {
+        User: {
           select: {
             id: true,
             username: true,
@@ -60,21 +60,31 @@ export async function GET(request: Request) {
         },
         _count: {
           select: {
-            reactions: true,
-            comments: true,
+            Reaction: true,
+            Comment: true,
           },
         },
-      },
+      } as any,
       orderBy: {
         createdAt: 'desc',
       },
       take: limit,
     });
 
+    // Map User to author and _count fields for backward compatibility
+    const formattedHotTakes = hotTakes.map((take: any) => ({
+      ...take,
+      author: take.User,
+      _count: {
+        reactions: take._count?.Reaction || 0,
+        comments: take._count?.Comment || 0,
+      },
+    }));
+
     const nextCursor = hotTakes.length === limit ? hotTakes[hotTakes.length - 1].id : null;
 
     return NextResponse.json({
-      hotTakes,
+      hotTakes: formattedHotTakes,
       nextCursor,
     });
   } catch (error) {
@@ -85,4 +95,3 @@ export async function GET(request: Request) {
     );
   }
 }
-

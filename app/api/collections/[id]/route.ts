@@ -15,24 +15,24 @@ export async function GET(
 
     const { id } = params;
 
-    const collection = await prisma.collection.findUnique({
+    const collection = await (prisma as any).collections.findUnique({
       where: { id },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             username: true,
             avatarUrl: true,
           },
         },
-        items: {
+        collection_items: {
           orderBy: {
             order: 'asc',
           },
           include: {
-            hotTake: {
+            HotTake: {
               include: {
-                author: {
+                User: {
                   select: {
                     id: true,
                     username: true,
@@ -41,8 +41,8 @@ export async function GET(
                 },
                 _count: {
                   select: {
-                    reactions: true,
-                    comments: true,
+                    Reaction: true,
+                    Comment: true,
                   },
                 },
               },
@@ -51,8 +51,8 @@ export async function GET(
         },
         _count: {
           select: {
-            items: true,
-            followers: true,
+            collection_items: true,
+            collection_followers: true,
           },
         },
       },
@@ -74,12 +74,29 @@ export async function GET(
     // Add isOwner flag to response
     const isOwner = collection.userId === dbUser?.id;
 
-    return NextResponse.json({ 
-      collection: {
-        ...collection,
-        isOwner,
-      }
-    });
+    // Map response to frontend-friendly format
+    const mappedCollection = {
+      ...collection,
+      user: collection.User,
+      items: collection.collection_items.map((item: any) => ({
+        ...item,
+        hotTake: {
+          ...item.HotTake,
+          author: item.HotTake.User,
+          _count: {
+            reactions: item.HotTake._count.Reaction,
+            comments: item.HotTake._count.Comment,
+          },
+        },
+      })),
+      _count: {
+        items: collection._count.collection_items,
+        followers: collection._count.collection_followers,
+      },
+      isOwner,
+    };
+
+    return NextResponse.json({ collection: mappedCollection });
   } catch (error) {
     console.error('[collection-get]:', error);
     return NextResponse.json({ error: 'Failed to fetch collection' }, { status: 500 });
@@ -106,7 +123,7 @@ export async function PATCH(
     });
 
     // Check ownership
-    const existingCollection = await prisma.collection.findUnique({
+    const existingCollection = await (prisma as any).collections.findUnique({
       where: { id },
     });
 
@@ -114,16 +131,17 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    const collection = await prisma.collection.update({
+    const collection = await (prisma as any).collections.update({
       where: { id },
       data: {
         ...(name && { name: name.trim() }),
         ...(description !== undefined && { description: description?.trim() }),
         ...(isPublic !== undefined && { isPublic }),
         ...(coverImage !== undefined && { coverImage }),
+        updatedAt: new Date(),
       },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             username: true,
@@ -132,8 +150,8 @@ export async function PATCH(
         },
         _count: {
           select: {
-            items: true,
-            followers: true,
+            collection_items: true,
+            collection_followers: true,
           },
         },
       },
@@ -142,12 +160,18 @@ export async function PATCH(
     // Add isOwner flag to response
     const isOwner = collection.userId === dbUser?.id;
 
-    return NextResponse.json({ 
-      collection: {
-        ...collection,
-        isOwner,
-      }
-    });
+    // Map response to frontend-friendly format
+    const mappedCollection = {
+      ...collection,
+      user: collection.User,
+      _count: {
+        items: collection._count.collection_items,
+        followers: collection._count.collection_followers,
+      },
+      isOwner,
+    };
+
+    return NextResponse.json({ collection: mappedCollection });
   } catch (error) {
     console.error('[collection-patch]:', error);
     return NextResponse.json({ error: 'Failed to update collection' }, { status: 500 });
@@ -172,7 +196,7 @@ export async function DELETE(
     });
 
     // Check ownership
-    const collection = await prisma.collection.findUnique({
+    const collection = await (prisma as any).collections.findUnique({
       where: { id },
     });
 
@@ -180,7 +204,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    await prisma.collection.delete({
+    await (prisma as any).collections.delete({
       where: { id },
     });
 
@@ -190,4 +214,3 @@ export async function DELETE(
     return NextResponse.json({ error: 'Failed to delete collection' }, { status: 500 });
   }
 }
-

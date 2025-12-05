@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       });
     }
 
-    const collections = await prisma.collection.findMany({
+    const collections = await (prisma as any).collections.findMany({
       where: userId
         ? { userId } // Get specific user's public collections
         : {
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
               { userId: dbUser.id }, // User's own collections
               {
                 isPublic: true,
-                followers: {
+                collection_followers: {
                   some: {
                     userId: dbUser.id,
                   },
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
             ],
           },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             username: true,
@@ -53,17 +53,17 @@ export async function GET(request: Request) {
         },
         _count: {
           select: {
-            items: true,
-            followers: true,
-          },
+            collection_items: true,
+            collection_followers: true,
+          } as any,
         },
-        items: {
+        collection_items: {
           take: 3,
           orderBy: {
             order: 'asc',
           },
           include: {
-            hotTake: {
+            HotTake: {
               select: {
                 id: true,
                 thumbUrl: true,
@@ -114,16 +114,18 @@ export async function POST(request: Request) {
       });
     }
 
-    const collection = await prisma.collection.create({
+    const collection = await (prisma as any).collections.create({
       data: {
+        id: `coll_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         name: name.trim(),
         description: description?.trim(),
         isPublic: isPublic || false,
         coverImage,
         userId: dbUser.id,
+        updatedAt: new Date(),
       },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             username: true,
@@ -132,9 +134,9 @@ export async function POST(request: Request) {
         },
         _count: {
           select: {
-            items: true,
-            followers: true,
-          },
+            collection_items: true,
+            collection_followers: true,
+          } as any,
         },
       },
     });

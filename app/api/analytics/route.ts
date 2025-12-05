@@ -34,18 +34,19 @@ export async function GET(request: Request) {
       include: {
         _count: {
           select: {
-            reactions: true,
-            comments: true,
+            Reaction: true,
+            Comment: true,
+            views: true,
           },
         },
-      },
+      } as any,
     });
 
-    // Calculate totals (mock data for views and shares since not in schema)
-    const totalViews = hotTakes.length * 127; // Mock: average 127 views per take
-    const totalLikes = hotTakes.reduce((sum, take) => sum + take._count.reactions, 0);
-    const totalComments = hotTakes.reduce((sum, take) => sum + take._count.comments, 0);
-    const totalShares = Math.floor(totalLikes * 0.2); // Mock: 20% of likes result in shares
+    // Calculate totals from real data
+    const totalViews = hotTakes.reduce((sum, take) => sum + (take._count as any).views, 0);
+    const totalLikes = hotTakes.reduce((sum, take) => sum + (take._count as any).Reaction, 0);
+    const totalComments = hotTakes.reduce((sum, take) => sum + (take._count as any).Comment, 0);
+    const totalShares = Math.floor(totalLikes * 0.2); // Estimate: 20% of likes result in shares
 
     // Get follower count
     const followersCount = await prisma.follow.count({
@@ -57,30 +58,66 @@ export async function GET(request: Request) {
       ? ((totalLikes + totalComments + totalShares) / totalViews) * 100 
       : 0;
 
-    // Mock growth data
-    const viewsGrowth = 15.7;
-    const followersGrowth = 8.3;
+    // Calculate growth from daily analytics
+    const dailyAnalytics = await (prisma as any).daily_analytics.findMany({
+      where: {
+        takeId: {
+          in: hotTakes.map(t => t.id),
+        },
+        date: { gte: startDate },
+      },
+      orderBy: { date: 'asc' },
+    });
+
+    // Split into first/second half for growth calculation
+    const midpoint = Math.floor(dailyAnalytics.length / 2);
+    const firstHalf = dailyAnalytics.slice(0, midpoint);
+    const secondHalf = dailyAnalytics.slice(midpoint);
+
+    const firstHalfViews = firstHalf.reduce((sum, day) => sum + day.views, 0);
+    const secondHalfViews = secondHalf.reduce((sum, day) => sum + day.views, 0);
+
+    const viewsGrowth = firstHalfViews > 0 
+      ? ((secondHalfViews - firstHalfViews) / firstHalfViews) * 100 
+      : 0;
+
+    const followersGrowth = 8.3; // TODO: Calculate from follower history when implemented
 
     // Get top performing Hot Takes
     const topHotTakes = hotTakes
-      .sort((a, b) => b._count.reactions - a._count.reactions)
+      .sort((a, b) => (b._count as any).views - (a._count as any).views)
       .slice(0, 5)
       .map(take => ({
         id: take.id,
         title: take.title,
-        views: 127, // Mock
-        likes: take._count.reactions,
-        comments: take._count.comments,
+        views: (take._count as any).views,
+        likes: (take._count as any).Reaction,
+        comments: (take._count as any).Comment,
       }));
 
-    // Generate weekly data
+    // Generate weekly data from daily analytics
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(now.getTime() - (6 - i) * 24 * 60 * 60 * 1000);
+      date.setHours(0, 0, 0, 0);
+      return date;
+    });
+
     const weeklyData = {
-      labels: Array.from({ length: 7 }, (_, i) => {
-        const date = new Date(now.getTime() - (6 - i) * 24 * 60 * 60 * 1000);
-        return date.toLocaleDateString('en-US', { weekday: 'short' });
+      labels: last7Days.map(date => 
+        date.toLocaleDateString('en-US', { weekday: 'short' })
+      ),
+      views: last7Days.map(date => {
+        const dayStats = dailyAnalytics.filter(stat => 
+          stat.date.toDateString() === date.toDateString()
+        );
+        return dayStats.reduce((sum, stat) => sum + stat.views, 0);
       }),
-      views: Array.from({ length: 7 }, () => Math.floor(Math.random() * 200) + 50),
-      likes: Array.from({ length: 7 }, () => Math.floor(Math.random() * 50) + 10),
+      likes: last7Days.map(date => {
+        const dayStats = dailyAnalytics.filter(stat => 
+          stat.date.toDateString() === date.toDateString()
+        );
+        return dayStats.reduce((sum, stat) => sum + stat.likes, 0);
+      }),
     };
 
     return NextResponse.json({

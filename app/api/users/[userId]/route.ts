@@ -22,10 +22,10 @@ export async function GET(
       include: {
         _count: {
           select: {
-            hotTakes: true,
-            followers: true,
-            following: true,
-          },
+            HotTake: true,
+            Follow_Follow_followerIdToUser: true,
+            Follow_Follow_followingIdToUser: true,
+          } as any,
         },
       },
     });
@@ -37,10 +37,10 @@ export async function GET(
         include: {
           _count: {
             select: {
-              hotTakes: true,
-              followers: true,
-              following: true,
-            },
+              HotTake: true,
+              Follow_Follow_followerIdToUser: true,
+              Follow_Follow_followingIdToUser: true,
+            } as any,
           },
         },
       });
@@ -58,10 +58,10 @@ export async function GET(
           include: {
             _count: {
               select: {
-                hotTakes: true,
-                followers: true,
-                following: true,
-              },
+                HotTake: true,
+                Follow_Follow_followerIdToUser: true,
+                Follow_Follow_followingIdToUser: true,
+              } as any,
             },
           },
         });
@@ -105,26 +105,39 @@ export async function GET(
         createdAt: true,
         _count: {
           select: {
-            reactions: true,
-            comments: true,
-          },
+            Reaction: true,  // FIXED: Capitalized
+            Comment: true,   // FIXED: Capitalized
+          } as any,
         },
       },
     });
 
-    return NextResponse.json({
+    // Map to user-friendly format
+    const formattedHotTakes = hotTakes.map((take: any) => ({
+      ...take,
+      _count: {
+        reactions: take._count?.Reaction || 0,  // Map back to lowercase for frontend
+        comments: take._count?.Comment || 0,    // Map back to lowercase for frontend
+      },
+    }));
+
+    // Map Prisma relation names to user-friendly names
+    const userWithCounts = user as any;
+    const formattedUser = {
       id: user.id,
       username: user.username,
       email: user.email,
-      bio: user.bio,
-      avatarUrl: user.avatarUrl,
+      bio: userWithCounts.bio || null,
+      avatarUrl: userWithCounts.avatarUrl || null,
       createdAt: user.createdAt,
       isFollowing,
-      followersCount: user._count.followers,
-      followingCount: user._count.following,
-      hotTakesCount: user._count.hotTakes,
-      hotTakes,
-    });
+      followersCount: userWithCounts._count?.Follow_Follow_followingIdToUser || 0,
+      followingCount: userWithCounts._count?.Follow_Follow_followerIdToUser || 0,
+      hotTakesCount: userWithCounts._count?.HotTake || 0,
+      hotTakes: formattedHotTakes,  // Use formatted hot takes
+    };
+
+    return NextResponse.json({ user: formattedUser });
   } catch (error) {
     console.error('[user-get] Error:', error);
     return NextResponse.json(
@@ -209,7 +222,7 @@ export async function PATCH(
         bio: true,
         avatarUrl: true,
         createdAt: true,
-      },
+      } as any,
     });
 
     return NextResponse.json({ user: updatedUser });

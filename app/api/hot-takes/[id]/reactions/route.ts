@@ -46,7 +46,7 @@ export async function POST(
       await prisma.reaction.delete({
         where: { id: existingReaction.id },
       });
-      return NextResponse.json({ message: 'Reaction removed' });
+      return NextResponse.json({ reacted: false, message: 'Reaction removed' });
     }
 
     const reaction = await prisma.reaction.create({
@@ -57,7 +57,7 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ reaction }, { status: 201 });
+    return NextResponse.json({ reacted: true, reaction }, { status: 201 });
   } catch (error) {
     console.error('[reactions-post]:', error);
     return NextResponse.json({ error: 'Failed to create reaction' }, { status: 500 });
@@ -70,19 +70,37 @@ export async function GET(
 ) {
   try {
     const { id } = params;
+    const clerkUser = await currentUser();
+    
     const reactions = await prisma.reaction.findMany({
       where: { takeId: id },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             username: true,
             avatarUrl: true,
           },
         },
-      },
+      } as any,
     });
-    return NextResponse.json({ reactions });
+
+    // Check if current user has reacted
+    let hasReacted = false;
+    if (clerkUser) {
+      const dbUser = await prisma.user.findUnique({
+        where: { clerkId: clerkUser.id },
+      });
+      if (dbUser) {
+        hasReacted = reactions.some((r: any) => r.userId === dbUser.id);
+      }
+    }
+
+    return NextResponse.json({ 
+      reactions,
+      hasReacted,
+      reactionCount: reactions.length,
+    });
   } catch (error) {
     console.error('[reactions-get]:', error);
     return NextResponse.json({ error: 'Failed to fetch reactions' }, { status: 500 });
